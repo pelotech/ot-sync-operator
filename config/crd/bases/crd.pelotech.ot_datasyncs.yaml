@@ -148,7 +148,7 @@ spec:
               phase:
                 enum:
                 - Queued
-                - Sycning
+                - Syncing
                 - Completed
                 - Failed
                 type: string

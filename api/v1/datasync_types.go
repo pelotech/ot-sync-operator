@@ -25,7 +25,7 @@ type DataSyncSpec struct {
 
 // DataSyncStatus defines the observed state of DataSync.
 type DataSyncStatus struct {
-	// +kubebuilder:validation:Enum=New;Queued;Sycning;Completed;Failed
+	// +kubebuilder:validation:Enum=Queued;Syncing;Completed;Failed
 	Phase string `json:"phase"`
 
 	// A human-readable message providing more details about the current phase.
@@ -34,7 +34,6 @@ type DataSyncStatus struct {
 	// Conditions of the DataSync resource.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
-
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

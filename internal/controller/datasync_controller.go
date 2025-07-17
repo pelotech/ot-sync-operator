@@ -22,7 +22,6 @@ const (
 
 // DataSync Phases
 const (
-	PhaseNew       string = "New"
 	PhaseQueued    string = "Queued"
 	PhaseSyncing   string = "Syncing"
 	PhaseCompleted string = "Completed"
@@ -64,42 +63,19 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	logger.Info("Reconciling DataSync", "Phase", currentPhase, "Name", dataSync.Name)
 
 	switch currentPhase {
-	case "": // State: A resource was just created
-		return r.reconcileNew(ctx, &dataSync)
-	case PhaseNew:
+	case "":
 		return r.reconcileQueued(ctx, &dataSync)
 	case PhaseQueued:
 		return r.reconcileSyncing(ctx, &dataSync)
 	case PhaseSyncing:
 		return r.reconcileCompleted(ctx, &dataSync)
 	case PhaseCompleted, PhaseFailed:
-		// Terminal states, do nothing
 		logger.Info("Resource is in a terminal state, no action needed.")
 		return ctrl.Result{}, nil
 	default:
 		logger.Error(nil, "Unknown phase detected", "Phase", currentPhase)
 		return ctrl.Result{}, nil
 	}
-}
-
-func (r *DataSyncReconciler) reconcileNew(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
-	logger.Info("Transitioning to New")
-
-	ds.Status.Phase = PhaseNew
-	ds.Status.Message = "New sync request has been acknowledged."
-	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
-		Type:    TypeReady,
-		Status:  metav1.ConditionFalse,
-		Reason:  "New",
-		Message: "Sync request is new.",
-	})
-
-	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.handleUpdateError(ctx, ds, err, "Failed to update status to New")
-	}
-
-	return ctrl.Result{Requeue: true}, nil
 }
 
 func (r *DataSyncReconciler) reconcileQueued(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {

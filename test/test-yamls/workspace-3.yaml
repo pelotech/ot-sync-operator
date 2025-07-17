@@ -4,10 +4,10 @@ metadata:
   labels:
     app.kubernetes.io/name: ot-sync-operator
     app.kubernetes.io/managed-by: kustomize
-  name: ot-data-sync
+  name: workspace-3-sync
 spec:
-  workspaceId: "123"
+  workspaceId: "3"
   vms:
-    - name: "test"
-      url: "s3.bucket.com"
+    - name: "test2"
+      url: "s3.3.com"
       sourceType: "s3"
