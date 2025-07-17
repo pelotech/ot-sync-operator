@@ -1,45 +1,47 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// VMS represents a single virtual machine to be synced.
+type VMS struct {
+	Name       string `json:"name"`
+	URL        string `json:"url"`
+	SourceType string `json:"sourceType"`
+}
 
 // DataSyncSpec defines the desired state of DataSync.
 type DataSyncSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// The unique identifier for the workspace to be synced.
+	// +kubebuilder:validation:MinLength=1
+	WorkspaceID string `json:"workspaceId"`
 
-	// Foo is an example field of DataSync. Edit datasync_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// VMS is a list of virtual machines to be synced.
+	// Each VM is identified by a name, URL, and sourceType.
+	// +kubebuilder:validation:MinItems=0
+	Vms []VMS `json:"vms"`
 }
 
 // DataSyncStatus defines the observed state of DataSync.
 type DataSyncStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +kubebuilder:validation:Enum=New;Queued;Sycning;Completed;Failed
+	Phase string `json:"phase"`
+
+	// A human-readable message providing more details about the current phase.
+	Message string `json:"message,omitempty"`
+
+	// Conditions of the DataSync resource.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=datasyncs,scope=Namespaced,shortName=ds,singular=datasync
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="The current phase of the DataSync."
+// +kubebuilder:printcolumn:name="WorkspaceID",type="string",JSONPath=".spec.workspaceId",description="The ID of the workspace being synced."
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DataSync is the Schema for the datasyncs API.
 type DataSync struct {
