@@ -1,0 +1,9 @@
+apiVersion: crd.pelotech.ot/v1
+kind: DataSync
+metadata:
+  labels:
+    app.kubernetes.io/name: ot-sync-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: datasync-sample
+spec:
+  # TODO(user): Add fields here
