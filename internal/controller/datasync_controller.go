@@ -13,19 +13,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
-)
-
-// Condition types and reasons
-const (
-	TypeReady string = "Ready"
-)
-
-// DataSync Phases
-const (
-	PhaseQueued    string = "Queued"
-	PhaseSyncing   string = "Syncing"
-	PhaseCompleted string = "Completed"
-	PhaseFailed    string = "Failed"
+	controllerutil "pelotech/ot-sync-operator/internal/contoller-utils"
 )
 
 // DataSyncReconciler reconciles a DataSync object
@@ -64,12 +52,12 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	switch currentPhase {
 	case "":
-		return r.reconcileQueued(ctx, &dataSync)
-	case PhaseQueued:
-		return r.reconcileSyncing(ctx, &dataSync)
-	case PhaseSyncing:
-		return r.reconcileCompleted(ctx, &dataSync)
-	case PhaseCompleted, PhaseFailed:
+		return r.queueResourceCreation(ctx, &dataSync)
+	case crdv1.DataSyncPhaseQueued:
+		return r.attemptSyncingOfResource(ctx, &dataSync)
+	case crdv1.DataSyncPhaseSyncing:
+		return r.transitonFromSyncing(ctx, &dataSync)
+	case crdv1.DataSyncPhaseCompleted, crdv1.DataSyncPhaseFailed:
 		logger.Info("Resource is in a terminal state, no action needed.")
 		return ctrl.Result{}, nil
 	default:
@@ -78,79 +66,100 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 }
 
-func (r *DataSyncReconciler) reconcileQueued(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+func (r *DataSyncReconciler) queueResourceCreation(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 	logger.Info("Transitioning to Queued")
 
-	ds.Status.Phase = PhaseQueued
+	ds.Status.Phase = crdv1.DataSyncPhaseQueued
 	ds.Status.Message = "Request is waiting for an available worker."
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
-		Type:    TypeReady,
+		Type:    crdv1.DataSyncTypeReady,
 		Status:  metav1.ConditionFalse,
 		Reason:  "Queued",
 		Message: "The sync has been queued for processing.",
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.handleUpdateError(ctx, ds, err, "Failed to update status to Queued")
+		return r.markResourceSyncAsFailed(ctx, ds, err, "Failed to update status to Queued")
 	}
 
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *DataSyncReconciler) reconcileSyncing(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
-	logger.Info("Transitioning to Syncing")
 
-	ds.Status.Phase = PhaseSyncing
+	// The Concurrency limit. TODO: Make this come from a watched configmap
+	const syncLimit = 2
+
+	syncingList, err := controllerutil.ListDataSyncsByPhase(ctx, r.Client, crdv1.DataSyncPhaseSyncing)
+
+	if err != nil {
+		logger.Error(err, "Failed to list syncing resources")
+		return ctrl.Result{}, err
+	}
+
+	// If the limit is reached, requeue and wait
+	if len(syncingList.Items) >= syncLimit {
+		logger.Info("Concurrency limit reached, requeueing", "limit", syncLimit, "current", len(syncingList.Items))
+		// Requeue after a delay to check again later
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	ds.Status.Phase = crdv1.DataSyncPhaseSyncing
 	ds.Status.Message = "Syncing VM data for the workspace."
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
-		Type:    TypeReady,
+		Type:    crdv1.DataSyncTypeReady,
 		Status:  metav1.ConditionFalse,
 		Reason:  "Syncing",
 		Message: "The sync is currently in progress.",
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.handleUpdateError(ctx, ds, err, "Failed to update status to Syncing")
+		return r.markResourceSyncAsFailed(ctx, ds, err, "Failed to update status to Syncing")
 	}
 
-	// Simulate work with a 10-second delay
-	logger.Info("Simulating sync work for 10 seconds...")
-	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	return ctrl.Result{}, nil
 }
 
-// reconcileCompleted handles the transition from Syncing -> Completed
-func (r *DataSyncReconciler) reconcileCompleted(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
-	logger.Info("Transitioning to Completed")
 
-	ds.Status.Phase = PhaseCompleted
+	// Check if the sync is done is not done
+	isDone := controllerutil.SyncIsComplete(ds)
+
+	if !isDone {
+		logger.Info("Sync is not complete. Requeueing.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	ds.Status.Phase = crdv1.DataSyncPhaseCompleted
 	ds.Status.Message = "The data sync completed successfully."
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
-		Type:    TypeReady,
+		Type:    crdv1.DataSyncTypeReady,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Completed",
 		Message: "The sync finished successfully.",
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.handleUpdateError(ctx, ds, err, "Failed to update status to Completed")
+		return r.markResourceSyncAsFailed(ctx, ds, err, "Failed to update status to Completed")
 	}
 
+	logger.Info("Sync Complete")
+	logger.Info("Transitioning to Completed")
 	return ctrl.Result{}, nil
 }
 
-// handleUpdateError centralizes the logic for marking a resource as Failed
-func (r *DataSyncReconciler) handleUpdateError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
+func (r *DataSyncReconciler) markResourceSyncAsFailed(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 	logger.Error(originalErr, message)
 
 	// Mark the resource as Failed
-	ds.Status.Phase = PhaseFailed
+	ds.Status.Phase = crdv1.DataSyncPhaseFailed
 	ds.Status.Message = "An error occurred during reconciliation: " + originalErr.Error()
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
-		Type:    TypeReady,
+		Type:    crdv1.DataSyncTypeReady,
 		Status:  metav1.ConditionFalse,
 		Reason:  "UpdateError",
 		Message: originalErr.Error(),
@@ -166,6 +175,14 @@ func (r *DataSyncReconciler) handleUpdateError(ctx context.Context, ds *crdv1.Da
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DataSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	// Index resources by phase since we have to query these quite a bit
+	err := mgr.GetFieldIndexer().IndexField(context.Background(), &crdv1.DataSync{}, ".status.phase", controllerutil.IndexDataSyncByPhase)
+
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&crdv1.DataSync{}).
 		Named("datasync").

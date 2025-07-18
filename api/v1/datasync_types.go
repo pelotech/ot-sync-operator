@@ -4,6 +4,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Condition types and reasons
+const (
+	DataSyncTypeReady string = "Ready"
+)
+
+// DataSync Phases
+const (
+	DataSyncPhaseQueued    string = "Queued"
+	DataSyncPhaseSyncing   string = "Syncing"
+	DataSyncPhaseCompleted string = "Completed"
+	DataSyncPhaseFailed    string = "Failed"
+)
+
 // VMS represents a single virtual machine to be synced.
 type VMS struct {
 	Name       string `json:"name"`
