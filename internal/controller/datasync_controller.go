@@ -25,6 +25,8 @@ type DataSyncReconciler struct {
 // +kubebuilder:rbac:groups=crd.pelotech.ot,resources=datasyncs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=crd.pelotech.ot,resources=datasyncs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=crd.pelotech.ot,resources=datasyncs/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -157,7 +159,7 @@ func (r *DataSyncReconciler) markResourceSyncAsFailed(ctx context.Context, ds *c
 
 	// Mark the resource as Failed
 	ds.Status.Phase = crdv1.DataSyncPhaseFailed
-	ds.Status.Message = "An error occurred during reconciliation: " + originalErr.Error()
+	ds.Status.Message = "An error occurred durng reconciliation: " + originalErr.Error()
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
 		Type:    crdv1.DataSyncTypeReady,
 		Status:  metav1.ConditionFalse,
