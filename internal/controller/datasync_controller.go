@@ -27,12 +27,14 @@ type DataSyncReconciler struct {
 // +kubebuilder:rbac:groups=crd.pelotech.ot,resources=datasyncs/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
-
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
+
+const REQUEUE_TIME = 10 * time.Second
+
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	logger := logf.FromContext(ctx)
@@ -48,7 +50,19 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// 2. The main reconciliation logic using a state machine
+	// 2. Get the configmap values for operator to abide by
+	// TODO: Should we have more robust error handling if the configmap isn't there?
+	configMapName := "datasync-operator-config"
+	configMapNamespace := "default"
+
+	controllerConfig, err := controllerutil.FetchOperatorConfig(ctx, r.Client, configMapName, configMapNamespace)
+
+	if err != nil {
+		logger.Error(err, "Failed to get operator config")
+		return ctrl.Result{}, err
+	}
+
+	// 3. The main reconciliation logic using a state machine
 	currentPhase := dataSync.Status.Phase
 	logger.Info("Reconciling DataSync", "Phase", currentPhase, "Name", dataSync.Name)
 
@@ -56,7 +70,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	case "":
 		return r.queueResourceCreation(ctx, &dataSync)
 	case crdv1.DataSyncPhaseQueued:
-		return r.attemptSyncingOfResource(ctx, &dataSync)
+		return r.attemptSyncingOfResource(ctx, &dataSync, controllerConfig)
 	case crdv1.DataSyncPhaseSyncing:
 		return r.transitonFromSyncing(ctx, &dataSync)
 	case crdv1.DataSyncPhaseCompleted, crdv1.DataSyncPhaseFailed:
@@ -88,11 +102,10 @@ func (r *DataSyncReconciler) queueResourceCreation(ctx context.Context, ds *crdv
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync, operatorConfig *controllerutil.OperatorConfig) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
-	// The Concurrency limit. TODO: Make this come from a watched configmap
-	const syncLimit = 2
+	syncLimit := operatorConfig.BehaviorConfig.Concurrency
 
 	syncingList, err := controllerutil.ListDataSyncsByPhase(ctx, r.Client, crdv1.DataSyncPhaseSyncing)
 
@@ -105,7 +118,7 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 	if len(syncingList.Items) >= syncLimit {
 		logger.Info("Concurrency limit reached, requeueing", "limit", syncLimit, "current", len(syncingList.Items))
 		// Requeue after a delay to check again later
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: REQUEUE_TIME}, nil
 	}
 
 	ds.Status.Phase = crdv1.DataSyncPhaseSyncing
@@ -132,7 +145,7 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 
 	if !isDone {
 		logger.Info("Sync is not complete. Requeueing.")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: REQUEUE_TIME}, nil
 	}
 
 	ds.Status.Phase = crdv1.DataSyncPhaseCompleted
