@@ -50,6 +50,34 @@ spec:
       #             operator: In
       #             values:
       #               - linux
+      # Using init containers is considered the preferred method of handling checking
+      # for dependencies in the cluster. We will need to figure out how to template this.
+      initContainers:
+      - name: check-dependencies
+        image: bitnami/kubectl:latest # Use an image with kubectl
+        env:
+        - name: CONFIGMAP_NAME
+          value: "my-operator-config"
+        - name: SECRET_NAME
+          value: "my-operator-secret"
+        command:
+        - /bin/sh
+        - -c
+        - >
+          set -e;
+          set -x;
+
+          until kubectl get configmap "$CONFIGMAP_NAME"; do
+            echo "Waiting for my-operator-config ConfigMap...";
+            sleep 2;
+          done;
+
+          until kubectl get secret "$SECRET_NAME"; do
+            echo "Waiting for my-operator-secret Secret...";
+            sleep 2;
+          done;
+
+          echo "All dependencies found!";
       securityContext:
         # Projects are configured by default to adhere to the "restricted" Pod Security Standards.
         # This ensures that deployments meet the highest security requirements for Kubernetes.
