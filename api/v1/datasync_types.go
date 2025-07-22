@@ -20,28 +20,6 @@ type VM struct {
 	DiskSize string `json:"diskSize"`
 }
 
-type CredentialsSecret struct {
-	Create      bool   `json:"create"`
-	Name        string `json:"name"`
-	AccessKeyId string `json:"accessKeyId"`
-	SecretKey   string `json:"secretKey"`
-}
-
-type CertConfigMap struct {
-	Create bool   `json:"create"`
-	Name   string `json:"name"`
-	Value  string `json:"value"`
-}
-
-// TODO: It looks like this is kind of a one off thing that we do in the beginning
-//
-//	including these on every datasync will be a pain. This need to go somewhere
-//	hit up Sean about what we want to do with this stuff
-type Auth struct {
-	CredentialsSecret `json:"credentialsSecret"`
-	CertConfigMap     `json:"certConfigMap"`
-}
-
 // DataSyncSpec defines the desired state of DataSync.
 type DataSyncSpec struct {
 	// The unique identifier for the workspace to be synced.
