@@ -186,6 +186,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// TODO: Check for our configmap that is used to configure the operator
+	//      if it is not there go ahead and create a default one
+
+	// TODO: Check for S3 secrets and config map to allow for pulling from
+	//      them as a source. If they are not there bail
+
 	if err := (&controller.DataSyncReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -215,6 +221,7 @@ func main() {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
+
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
