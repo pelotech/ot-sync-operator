@@ -23,6 +23,7 @@ import (
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	"pelotech/ot-sync-operator/internal/controller"
+	kubectlclient "pelotech/ot-sync-operator/internal/kubectl-client"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -48,6 +49,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var runningInCluster bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -65,6 +67,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&runningInCluster, "Whether or not we running inside the cluster", false, "")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -183,6 +186,15 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	// Standup our client we will use to deploy resources inside the controller
+
+	_, err = kubectlclient.LoadKubectlConfig(runningInCluster)
+
+	if err != nil {
+		setupLog.Error(err, "unable to load kubectl", "controller", "DataSync")
 		os.Exit(1)
 	}
 
