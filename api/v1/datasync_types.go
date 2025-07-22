@@ -4,24 +4,43 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Condition types and reasons
-const (
-	DataSyncTypeReady string = "Ready"
-)
-
-// DataSync Phases
-const (
-	DataSyncPhaseQueued    string = "Queued"
-	DataSyncPhaseSyncing   string = "Syncing"
-	DataSyncPhaseCompleted string = "Completed"
-	DataSyncPhaseFailed    string = "Failed"
-)
 
 // VMS represents a single virtual machine to be synced.
-type VMS struct {
-	Name       string `json:"name"`
-	URL        string `json:"url"`
+type VM struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url"`
+
+	// +kubebuilder:validation:Enum=s3;registry
 	SourceType string `json:"sourceType"`
+
+	// DiskSize specifies the size of the disk, e.g., "10Gi", "500Mi".
+	// +kubebuilder:validation:Pattern=`^[0-9.]+[A-Za-z]+$`
+	DiskSize string `json:"diskSize"`
+}
+
+type CredentialsSecret struct {
+	Create      bool   `json:"create"`
+	Name        string `json:"name"`
+	AccessKeyId string `json:"accessKeyId"`
+	SecretKey   string `json:"secretKey"`
+}
+
+type CertConfigMap struct {
+	Create bool   `json:"create"`
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+}
+
+// TODO: It looks like this is kind of a one off thing that we do in the beginning
+//
+//	including these on every datasync will be a pain. This need to go somewhere
+//	hit up Sean about what we want to do with this stuff
+type Auth struct {
+	CredentialsSecret `json:"credentialsSecret"`
+	CertConfigMap     `json:"certConfigMap"`
 }
 
 // DataSyncSpec defines the desired state of DataSync.
@@ -30,10 +49,21 @@ type DataSyncSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	WorkspaceID string `json:"workspaceId"`
 
+	// +kubebuilder:validation:minlength=1
+	Version string `json:"version"`
+
+	AskForDiskSpace bool `json:"askForDiskSpace"`
+
+	// +kubebuilder:validation:minlength=1
+	SecretRef string `json:"secretRef"`
+
 	// VMS is a list of virtual machines to be synced.
 	// Each VM is identified by a name, URL, and sourceType.
 	// +kubebuilder:validation:MinItems=0
-	Vms []VMS `json:"vms"`
+	Vms []VM `json:"vms"`
+
+	StorageClass  *string `json:"storageClass,omitempty"`
+	CertConfigMap *string `json:"certConfigMap,omitempty"`
 }
 
 // DataSyncStatus defines the observed state of DataSync.
@@ -47,6 +77,19 @@ type DataSyncStatus struct {
 	// Conditions of the DataSync resource.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// Condition types and reasons
+const (
+	DataSyncTypeReady string = "Ready"
+)
+
+// DataSync Phases
+const (
+	DataSyncPhaseQueued    string = "Queued"
+	DataSyncPhaseSyncing   string = "Syncing"
+	DataSyncPhaseCompleted string = "Completed"
+	DataSyncPhaseFailed    string = "Failed"
+)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

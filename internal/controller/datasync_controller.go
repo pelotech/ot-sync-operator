@@ -33,7 +33,7 @@ type DataSyncReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 
-const REQUEUE_TIME = 10 * time.Second
+const requeueTimeInveral = 10 * time.Second
 
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
@@ -62,7 +62,6 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// 3. The main reconciliation logic using a state machine
 	currentPhase := dataSync.Status.Phase
 	logger.Info("Reconciling DataSync", "Phase", currentPhase, "Name", dataSync.Name)
 
@@ -105,7 +104,7 @@ func (r *DataSyncReconciler) queueResourceCreation(ctx context.Context, ds *crdv
 func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync, operatorConfig *controllerutil.OperatorConfig) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
-	syncLimit := operatorConfig.BehaviorConfig.Concurrency
+	syncLimit := operatorConfig.Concurrency
 
 	syncingList, err := controllerutil.ListDataSyncsByPhase(ctx, r.Client, crdv1.DataSyncPhaseSyncing)
 
@@ -117,8 +116,7 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 	// If the limit is reached, requeue and wait
 	if len(syncingList.Items) >= syncLimit {
 		logger.Info("Concurrency limit reached, requeueing", "limit", syncLimit, "current", len(syncingList.Items))
-		// Requeue after a delay to check again later
-		return ctrl.Result{RequeueAfter: REQUEUE_TIME}, nil
+		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
 	}
 
 	ds.Status.Phase = crdv1.DataSyncPhaseSyncing
@@ -145,7 +143,7 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 
 	if !isDone {
 		logger.Info("Sync is not complete. Requeueing.")
-		return ctrl.Result{RequeueAfter: REQUEUE_TIME}, nil
+		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
 	}
 
 	ds.Status.Phase = crdv1.DataSyncPhaseCompleted
@@ -166,6 +164,9 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 	return ctrl.Result{}, nil
 }
 
+// TODO: This is where we want to do error handling.
+//
+//	We need to implement retry and backoff. These values are found in the configmap
 func (r *DataSyncReconciler) markResourceSyncAsFailed(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 	logger.Error(originalErr, message)

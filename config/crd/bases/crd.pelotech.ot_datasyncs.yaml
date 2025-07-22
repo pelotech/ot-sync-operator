@@ -53,6 +53,16 @@ spec:
           spec:
             description: DataSyncSpec defines the desired state of DataSync.
             properties:
+              askForDiskSpace:
+                type: boolean
+              certConfigMap:
+                type: string
+              secretRef:
+                type: string
+              storageClass:
+                type: string
+              version:
+                type: string
               vms:
                 description: |-
                   VMS is a list of virtual machines to be synced.
@@ -60,13 +70,24 @@ spec:
                 items:
                   description: VMS represents a single virtual machine to be synced.
                   properties:
+                    diskSize:
+                      description: DiskSize specifies the size of the disk, e.g.,
+                        "10Gi", "500Mi".
+                      pattern: ^[0-9.]+[A-Za-z]+$
+                      type: string
                     name:
+                      minLength: 1
                       type: string
                     sourceType:
+                      enum:
+                      - s3
+                      - registry
                       type: string
                     url:
+                      minLength: 1
                       type: string
                   required:
+                  - diskSize
                   - name
                   - sourceType
                   - url
@@ -78,6 +99,9 @@ spec:
                 minLength: 1
                 type: string
             required:
+            - askForDiskSpace
+            - secretRef
+            - version
             - vms
             - workspaceId
             type: object

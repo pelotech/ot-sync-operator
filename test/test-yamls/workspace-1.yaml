@@ -7,7 +7,11 @@ metadata:
   name: workspace-1-sync
 spec:
   workspaceId: "1"
+  askForDiskSpace: false
+  secretRef: "workspace-1-secret"
+  version: "1.0.0"
   vms:
     - name: "test"
       url: "s3.1.com"
       sourceType: "s3"
+      diskSize: "20mb"

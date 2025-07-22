@@ -7,6 +7,3 @@ data:
   concurrency: "2"
   retryLimit: "2"
   retryBackoffDuration: "5m"
-  repoURL: "https://charts.bitnami.com/bitnami"
-  chartName: "nginx"
-  chartVersion: "17.2.1"

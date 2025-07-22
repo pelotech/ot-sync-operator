@@ -72,16 +72,6 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 	config := &OperatorConfig{}
 	var ok bool
 
-	if config.HelmChartInfo.RepoURL, ok = configMap.Data["repoURL"]; !ok {
-		return nil, fmt.Errorf("key 'repoURL' not found in configmap %s", name.Name)
-	}
-	if config.HelmChartInfo.ChartName, ok = configMap.Data["chartName"]; !ok {
-		return nil, fmt.Errorf("key 'chartName' not found in configmap %s", name.Name)
-	}
-	if config.HelmChartInfo.ChartVersion, ok = configMap.Data["chartVersion"]; !ok {
-		return nil, fmt.Errorf("key 'chartVersion' not found in configmap %s", name.Name)
-	}
-
 	concurrencyStr, ok := configMap.Data["concurrency"]
 	if !ok {
 		return nil, fmt.Errorf("key 'concurrency' not found in configmap %s", name.Name)
@@ -93,7 +83,7 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 		return nil, fmt.Errorf("failed to parse 'concurrency': %w", err)
 	}
 
-	config.BehaviorConfig.Concurrency = concurrency
+	config.Concurrency = concurrency
 
 	retryLimitStr, ok := configMap.Data["retryLimit"]
 
@@ -107,7 +97,7 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 		return nil, fmt.Errorf("failed to parse 'retryLimit': %w", err)
 	}
 
-	config.BehaviorConfig.RetryLimit = retryLimit
+	config.RetryLimit = retryLimit
 
 	durationStr, ok := configMap.Data["retryBackoffDuration"]
 
@@ -121,7 +111,7 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 		return nil, fmt.Errorf("failed to parse 'retryBackoffDuration': %w", err)
 	}
 
-	config.BehaviorConfig.RetryBackoffDuration = duration
+	config.RetryBackoffDuration = duration
 
 	return config, nil
 }
