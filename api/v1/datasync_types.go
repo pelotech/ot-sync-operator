@@ -53,11 +53,14 @@ type DataSyncStatus struct {
 
 	// Conditions of the DataSync resource.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	FailureCount int `json:"failureCount,omitempty"`
 }
 
 // Condition types and reasons
 const (
-	DataSyncTypeReady string = "Ready"
+	DataSyncTypeReady  string = "Ready"
+	DataSyncTypeFailed string = "Failed"
 )
 
 // DataSync Phases

@@ -8,18 +8,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	controllerutil "pelotech/ot-sync-operator/internal/contoller-utils"
+	generalutils "pelotech/ot-sync-operator/internal/general-utils"
 )
 
 // DataSyncReconciler reconciles a DataSync object
 type DataSyncReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=crd.pelotech.ot,resources=datasyncs,verbs=get;list;watch;create;update;patch;delete
@@ -53,9 +56,13 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// 2. Get the configmap values for operator to abide by
 	// TODO: Should we have more robust error handling if the configmap isn't there?
 	configMapName := "datasync-operator-config"
-	configMapNamespace := "default"
 
-	controllerConfig, err := controllerutil.FetchOperatorConfig(ctx, r.Client, configMapName, configMapNamespace)
+	operatorConfigmap, err := generalutils.GetConfigMap(ctx, r.Client, configMapName, dataSync.Namespace)
+	if err != nil {
+		logger.Error(err, "Failed to get operator config")
+	}
+
+	controllerConfig, err := controllerutil.ExtractOperatorConfig(operatorConfigmap)
 
 	if err != nil {
 		logger.Error(err, "Failed to get operator config")
@@ -69,9 +76,9 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	case "":
 		return r.queueResourceCreation(ctx, &dataSync)
 	case crdv1.DataSyncPhaseQueued:
-		return r.attemptSyncingOfResource(ctx, &dataSync, controllerConfig)
+		return r.attemptSyncingOfResource(ctx, &dataSync, controllerConfig.Concurrency)
 	case crdv1.DataSyncPhaseSyncing:
-		return r.transitonFromSyncing(ctx, &dataSync)
+		return r.transitonFromSyncing(ctx, &dataSync, controllerConfig.RetryLimit)
 	case crdv1.DataSyncPhaseCompleted, crdv1.DataSyncPhaseFailed:
 		logger.Info("Resource is in a terminal state, no action needed.")
 		return ctrl.Result{}, nil
@@ -82,9 +89,6 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *DataSyncReconciler) queueResourceCreation(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
-	logger.Info("Transitioning to Queued")
-
 	ds.Status.Phase = crdv1.DataSyncPhaseQueued
 	ds.Status.Message = "Request is waiting for an available worker."
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
@@ -95,16 +99,16 @@ func (r *DataSyncReconciler) queueResourceCreation(ctx context.Context, ds *crdv
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.markResourceSyncAsFailed(ctx, ds, err, "Failed to update status to Queued")
+		return r.handleResourceUpdateError(ctx, ds, err, "Failed to update status to Queued")
 	}
+
+	r.Recorder.Eventf(ds, "Normal", "Queued", "Resource successfully queued for sync orchestration")
 
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync, operatorConfig *controllerutil.OperatorConfig) (ctrl.Result, error) {
+func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync, syncLimit int) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
-
-	syncLimit := operatorConfig.Concurrency
 
 	syncingList, err := controllerutil.ListDataSyncsByPhase(ctx, r.Client, crdv1.DataSyncPhaseSyncing)
 
@@ -115,7 +119,7 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 
 	// If the limit is reached, requeue and wait
 	if len(syncingList.Items) >= syncLimit {
-		logger.Info("Concurrency limit reached, requeueing", "limit", syncLimit, "current", len(syncingList.Items))
+		r.Recorder.Eventf(ds, "Normal", "WaitingToSync", "No more than %d DataSyncs can be syncing at once. Waiting...", syncLimit)
 		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
 	}
 
@@ -129,14 +133,24 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.markResourceSyncAsFailed(ctx, ds, err, "Failed to update status to Syncing")
+		return r.handleResourceUpdateError(ctx, ds, err, "Failed to update status to Syncing")
 	}
+
+	r.Recorder.Eventf(ds, "Normal", "SyncStarted", "Resource sync has started")
 
 	return ctrl.Result{}, nil
 }
 
-func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync, retryLimit int) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
+
+	// Check if there is an error occurring in the sync
+	syncError := controllerutil.SyncErrorOccurred(ds)
+
+	if syncError != nil {
+		logger.Error(syncError, "A sync error has occurred.")
+		return r.handleSyncError(ctx, ds, syncError, "A error has occurred while syncing", retryLimit)
+	}
 
 	// Check if the sync is done is not done
 	isDone := controllerutil.SyncIsComplete(ds)
@@ -156,18 +170,15 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		return r.markResourceSyncAsFailed(ctx, ds, err, "Failed to update status to Completed")
+		return r.handleResourceUpdateError(ctx, ds, err, "Failed to update status to Completed")
 	}
 
-	logger.Info("Sync Complete")
-	logger.Info("Transitioning to Completed")
+	r.Recorder.Eventf(ds, "Normal", "SyncCompleted", "Resource sync completed successfully")
+
 	return ctrl.Result{}, nil
 }
 
-// TODO: This is where we want to do error handling.
-//
-//	We need to implement retry and backoff. These values are found in the configmap
-func (r *DataSyncReconciler) markResourceSyncAsFailed(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
+func (r *DataSyncReconciler) handleResourceUpdateError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 	logger.Error(originalErr, message)
 
@@ -178,6 +189,45 @@ func (r *DataSyncReconciler) markResourceSyncAsFailed(ctx context.Context, ds *c
 		Type:    crdv1.DataSyncTypeReady,
 		Status:  metav1.ConditionFalse,
 		Reason:  "UpdateError",
+		Message: originalErr.Error(),
+	})
+
+	if err := r.Status().Update(ctx, ds); err != nil {
+		logger.Error(err, "Could not update status to Failed after an initial update error")
+	}
+
+	return ctrl.Result{}, originalErr
+}
+
+// TODO: This is where we want to do error handling for sync specific errors
+//
+//	We need to implement retry and backoff. These values are found in the configmap
+func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string, retryLimit int) (ctrl.Result, error) {
+	logger := logf.FromContext(ctx)
+	logger.Error(originalErr, message)
+
+	r.Recorder.Eventf(ds, "Warning", "SyncErrorOccurred", originalErr.Error())
+
+	ds.Status.FailureCount += 1
+
+	if err := r.Status().Update(ctx, ds); err != nil {
+		logger.Error(err, "Failed to update resource failure count")
+	}
+
+	// if we've failed less times than the retry limit then we just go again
+	if ds.Status.FailureCount < retryLimit {
+		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
+	}
+
+	r.Recorder.Eventf(ds, "Error", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %s", retryLimit)
+
+	// Mark the resource as Failed
+	ds.Status.Phase = crdv1.DataSyncPhaseFailed
+	ds.Status.Message = "An error occurred durng reconciliation: " + originalErr.Error()
+	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
+		Type:    crdv1.DataSyncTypeFailed,
+		Status:  metav1.ConditionTrue,
+		Reason:  "SyncFailure",
 		Message: originalErr.Error(),
 	})
 

@@ -14,28 +14,20 @@ import (
 )
 
 func ListDataSyncsByPhase(ctx context.Context, c client.Client, phase string) (*crdv1.DataSyncList, error) {
-	// Initialize an empty list to store the results.
 	list := &crdv1.DataSyncList{}
 
-	// Set up the list options to filter by the indexed '.status.phase' field.
 	listOpts := []client.ListOption{
 		client.MatchingFields{".status.phase": phase},
 	}
 
-	// Execute the list command.
 	if err := c.List(ctx, list, listOpts...); err != nil {
-		// If the list fails, return no list and the encountered error.
 		return nil, err
 	}
 
-	// On success, return the populated list and no error.
 	return list, nil
 }
 
-// IndexDataSyncByPhase is a helper function for the FieldIndexer.
-// It extracts the phase from a DataSync object for indexing.
 func IndexDataSyncByPhase(rawObj client.Object) []string {
-	// Attempt to cast the object to a DataSync object.
 	ds, ok := rawObj.(*crdv1.DataSync)
 
 	if !ok {
@@ -46,7 +38,6 @@ func IndexDataSyncByPhase(rawObj client.Object) []string {
 		return nil
 	}
 
-	// Return the phase as a slice of strings for the index.
 	return []string{ds.Status.Phase}
 }
 
@@ -57,24 +48,55 @@ func SyncIsComplete(ds *crdv1.DataSync) bool {
 	return isDone
 }
 
-// FetchOperatorConfig retrieves and parses all operator and chart configuration from a ConfigMap used to control operator behavior.
-func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName string, namespace string) (*OperatorConfig, error) {
+// TODO: Add actual logic to get this done.
+func SyncErrorOccurred(ds *crdv1.DataSync) error {
+	hasError := rand.Float64() > .1
+
+	if !hasError {
+		return nil
+	}
+
+	return fmt.Errorf("this is a mocked sync error")
+}
+
+func GetConfigMap(ctx context.Context, c client.Client, configMapName string, namespace string) (*corev1.ConfigMap, error) {
 	name := types.NamespacedName{
 		Name:      configMapName,
 		Namespace: namespace,
 	}
 
 	configMap := &corev1.ConfigMap{}
-	if err := c.Get(ctx, name, configMap); err != nil {
+	err := c.Get(ctx, name, configMap)
+
+	if err != nil {
 		return nil, fmt.Errorf("failed to get operator configmap %s: %w", name.Name, err)
 	}
 
-	config := &OperatorConfig{}
+	return configMap, nil
+}
+
+func GetSecret(ctx context.Context, c client.Client, configMapName string, namespace string) (*corev1.Secret, error) {
+	name := types.NamespacedName{
+		Name:      configMapName,
+		Namespace: namespace,
+	}
+
+	secret := &corev1.Secret{}
+	err := c.Get(ctx, name, secret)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get operator configmap %s: %w", name.Name, err)
+	}
+
+	return secret, nil
+}
+
+func ExtractOperatorConfig(configMap *corev1.ConfigMap) (*OperatorConfig, error) {
 	var ok bool
 
 	concurrencyStr, ok := configMap.Data["concurrency"]
 	if !ok {
-		return nil, fmt.Errorf("key 'concurrency' not found in configmap %s", name.Name)
+		return nil, fmt.Errorf("key 'concurrency' not found in configmap %s", configMap.Name)
 	}
 
 	concurrency, err := strconv.Atoi(concurrencyStr)
@@ -83,12 +105,10 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 		return nil, fmt.Errorf("failed to parse 'concurrency': %w", err)
 	}
 
-	config.Concurrency = concurrency
-
 	retryLimitStr, ok := configMap.Data["retryLimit"]
 
 	if !ok {
-		return nil, fmt.Errorf("key 'retryLimit' not found in configmap %s", name.Name)
+		return nil, fmt.Errorf("key 'retryLimit' not found in configmap %s", configMap.Name)
 	}
 
 	retryLimit, err := strconv.Atoi(retryLimitStr)
@@ -97,12 +117,10 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 		return nil, fmt.Errorf("failed to parse 'retryLimit': %w", err)
 	}
 
-	config.RetryLimit = retryLimit
-
 	durationStr, ok := configMap.Data["retryBackoffDuration"]
 
 	if !ok {
-		return nil, fmt.Errorf("key 'retryBackoffDuration' not found in configmap %s", name.Name)
+		return nil, fmt.Errorf("key 'retryBackoffDuration' not found in configmap %s", configMap.Name)
 	}
 
 	duration, err := time.ParseDuration(durationStr)
@@ -111,7 +129,9 @@ func FetchOperatorConfig(ctx context.Context, c client.Client, configMapName str
 		return nil, fmt.Errorf("failed to parse 'retryBackoffDuration': %w", err)
 	}
 
-	config.RetryBackoffDuration = duration
-
-	return config, nil
+	return &OperatorConfig{
+		RetryBackoffDuration: duration,
+		RetryLimit:           retryLimit,
+		Concurrency:          concurrency,
+	}, nil
 }
