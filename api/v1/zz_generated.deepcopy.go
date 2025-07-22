@@ -137,9 +137,7 @@ func (in *DataSyncSpec) DeepCopyInto(out *DataSyncSpec) {
 	if in.Vms != nil {
 		in, out := &in.Vms, &out.Vms
 		*out = make([]VM, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
-		}
+		copy(*out, *in)
 	}
 	if in.StorageClass != nil {
 		in, out := &in.StorageClass, &out.StorageClass

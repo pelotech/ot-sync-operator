@@ -4,7 +4,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-
 // VMS represents a single virtual machine to be synced.
 type VM struct {
 	// +kubebuilder:validation:MinLength=1
