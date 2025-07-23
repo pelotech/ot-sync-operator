@@ -18,12 +18,50 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+func CreateStorageManifestsForDataSyncResource(
+	r crdv1.Resource,
+	ds *crdv1.DataSync,
+) (*snapshotv1.VolumeSnapshot, *cdiv1beta1.DataVolume, error) {
+	volumeSnapshot := createVolumeSnapshot(VolumeSnapshotConfig{
+		ResourceName: ds.Spec.WorkspaceID,
+		Namespace:    ds.Namespace,
+		Labels:       ds.Labels,
+	})
+
+	dataVolumeConfig := &DataVolumeConfig{
+		OwnerUID:     ds.UID,
+		OwnerName:    ds.Name,
+		ResourceName: ds.Name,
+		Namespace:    ds.Namespace,
+		Resource:     r,
+		Labels:       ds.Labels,
+		AddDiskSpace: ds.Spec.AskForDiskSpace,
+		SecretRef:    ds.Spec.SecretRef,
+	}
+
+	if ds.Spec.CertConfigMap != nil {
+		dataVolumeConfig.ConfigMapRef = ds.Spec.CertConfigMap
+	}
+
+	if ds.Spec.StorageClass != nil {
+		dataVolumeConfig.StorageClass = ds.Spec.StorageClass
+	}
+
+	dataVolume, err := createDataVolume(dataVolumeConfig)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return volumeSnapshot, dataVolume, nil
+}
+
 type DataVolumeConfig struct {
 	OwnerUID     types.UID
 	OwnerName    string
 	ResourceName string
 	Namespace    string
-	Vm           crdv1.VM
+	Resource     crdv1.Resource
 	Labels       map[string]string
 	AddDiskSpace bool
 	SecretRef    string
@@ -31,8 +69,8 @@ type DataVolumeConfig struct {
 	StorageClass *string
 }
 
-func CreateDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) {
-	diskSize, err := calculateDiskSize(config.Vm.Name, config.AddDiskSpace)
+func createDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) {
+	diskSize, err := calculateDiskSize(config.Resource.DiskSize, config.AddDiskSpace)
 
 	if err != nil {
 		return nil, err
@@ -74,10 +112,10 @@ func CreateDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) 
 
 	var source *cdiv1beta1.DataVolumeSource
 
-	if config.Vm.SourceType == "s3" {
+	if config.Resource.SourceType == "s3" {
 		source = &cdiv1beta1.DataVolumeSource{
 			S3: &cdiv1beta1.DataVolumeSourceS3{
-				URL:       config.Vm.URL,
+				URL:       config.Resource.URL,
 				SecretRef: config.SecretRef,
 			},
 		}
@@ -88,7 +126,7 @@ func CreateDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) 
 		}
 		source = &cdiv1beta1.DataVolumeSource{
 			Registry: &cdiv1beta1.DataVolumeSourceRegistry{
-				URL:           &config.Vm.URL,
+				URL:           &config.Resource.URL,
 				CertConfigMap: config.ConfigMapRef,
 				SecretRef:     &config.SecretRef,
 			},
@@ -109,15 +147,13 @@ func CreateDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) 
 }
 
 type VolumeSnapshotConfig struct {
-	ResourceName string
-	Namespace    string
-	Labels       map[string]string
-
-	// Dear reviewer please lmk if there is a go idomatic safer way to model optional fields
+	ResourceName  string
+	Namespace     string
+	Labels        map[string]string
 	SnapshotClass *string
 }
 
-func CreateVolumeSnapshot(config VolumeSnapshotConfig) *snapshotv1.VolumeSnapshot {
+func createVolumeSnapshot(config VolumeSnapshotConfig) *snapshotv1.VolumeSnapshot {
 	meta := metav1.ObjectMeta{
 		Name:      config.ResourceName,
 		Namespace: config.Namespace,
