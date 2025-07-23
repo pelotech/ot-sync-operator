@@ -1,9 +1,12 @@
 package resourcemanager
 
-import "context"
+import (
+	"context"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 type ResourceManager[T any] interface {
-	GenerateResources(ctx context.Context, resource *T) error
-	TearDownResources(ctx context.Context, resource *T) error
+	CreateResources(ctx context.Context, k8sClient client.Client, resource *T) error
+	TearDownAllResources(ctx context.Context, k8sClient client.Client, resource *T) error
 }
-
