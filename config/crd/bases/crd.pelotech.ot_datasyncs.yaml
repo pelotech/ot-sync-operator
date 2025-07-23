@@ -90,6 +90,8 @@ spec:
                 type: array
               secretRef:
                 type: string
+              snapshotClass:
+                type: string
               storageClass:
                 type: string
               version:

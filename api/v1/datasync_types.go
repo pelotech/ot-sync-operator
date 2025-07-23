@@ -40,6 +40,7 @@ type DataSyncSpec struct {
 
 	StorageClass  *string `json:"storageClass,omitempty"`
 	CertConfigMap *string `json:"certConfigMap,omitempty"`
+	SnapshotClass *string `json:"snapshotClass,omitempty"`
 }
 
 // DataSyncStatus defines the observed state of DataSync.
@@ -68,6 +69,11 @@ const (
 	DataSyncPhaseSyncing   string = "Syncing"
 	DataSyncPhaseCompleted string = "Completed"
 	DataSyncPhaseFailed    string = "Failed"
+)
+
+const (
+	DataSyncOwnerLabel   string = "owner"
+	DataSyncVersionLabel string = "version"
 )
 
 // +kubebuilder:object:root=true
