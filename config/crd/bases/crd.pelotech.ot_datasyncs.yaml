@@ -57,18 +57,12 @@ spec:
                 type: boolean
               certConfigMap:
                 type: string
-              secretRef:
-                type: string
-              storageClass:
-                type: string
-              version:
-                type: string
-              vms:
-                description: |-
-                  VMS is a list of virtual machines to be synced.
-                  Each VM is identified by a name, URL, and sourceType.
+              resources:
+                description: resources is a list of workspace resources that have
+                  data that needs to be synced.
                 items:
-                  description: VMS represents a single virtual machine to be synced.
+                  description: Resources represent a resource which is used in a workspace
+                    that has some data that needs to be synced
                   properties:
                     diskSize:
                       description: DiskSize specifies the size of the disk, e.g.,
@@ -94,15 +88,21 @@ spec:
                   type: object
                 minItems: 0
                 type: array
+              secretRef:
+                type: string
+              storageClass:
+                type: string
+              version:
+                type: string
               workspaceId:
                 description: The unique identifier for the workspace to be synced.
                 minLength: 1
                 type: string
             required:
             - askForDiskSpace
+            - resources
             - secretRef
             - version
-            - vms
             - workspaceId
             type: object
           status:

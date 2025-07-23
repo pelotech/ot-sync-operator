@@ -10,7 +10,7 @@ spec:
   askForDiskSpace: false
   secretRef: "workspace-5-secret"
   version: "1.0.0"
-  vms:
+  resources:
     - name: "test5"
       url: "s3.5.com"
       sourceType: "s3"

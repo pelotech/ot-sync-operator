@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// VMS represents a single virtual machine to be synced.
-type VM struct {
+// Resources represent a resource which is used in a workspace that has some data that needs to be synced
+type Resource struct {
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
@@ -34,10 +34,9 @@ type DataSyncSpec struct {
 	// +kubebuilder:validation:minlength=1
 	SecretRef string `json:"secretRef"`
 
-	// VMS is a list of virtual machines to be synced.
-	// Each VM is identified by a name, URL, and sourceType.
+	// resources is a list of workspace resources that have data that needs to be synced.
 	// +kubebuilder:validation:MinItems=0
-	Vms []VM `json:"vms"`
+	Resources []Resource `json:"resources"`
 
 	StorageClass  *string `json:"storageClass,omitempty"`
 	CertConfigMap *string `json:"certConfigMap,omitempty"`
