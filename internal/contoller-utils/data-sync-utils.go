@@ -9,7 +9,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -50,45 +49,13 @@ func SyncIsComplete(ds *crdv1.DataSync) bool {
 
 // TODO: Add actual logic to get this done.
 func SyncErrorOccurred(ds *crdv1.DataSync) error {
-	hasError := rand.Float64() > .1
+	hasError := rand.Float64() > .9
 
 	if !hasError {
 		return nil
 	}
 
 	return fmt.Errorf("this is a mocked sync error")
-}
-
-func GetConfigMap(ctx context.Context, c client.Client, configMapName string, namespace string) (*corev1.ConfigMap, error) {
-	name := types.NamespacedName{
-		Name:      configMapName,
-		Namespace: namespace,
-	}
-
-	configMap := &corev1.ConfigMap{}
-	err := c.Get(ctx, name, configMap)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get operator configmap %s: %w", name.Name, err)
-	}
-
-	return configMap, nil
-}
-
-func GetSecret(ctx context.Context, c client.Client, configMapName string, namespace string) (*corev1.Secret, error) {
-	name := types.NamespacedName{
-		Name:      configMapName,
-		Namespace: namespace,
-	}
-
-	secret := &corev1.Secret{}
-	err := c.Get(ctx, name, secret)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get operator configmap %s: %w", name.Name, err)
-	}
-
-	return secret, nil
 }
 
 func ExtractOperatorConfig(configMap *corev1.ConfigMap) (*OperatorConfig, error) {
