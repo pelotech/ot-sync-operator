@@ -38,11 +38,14 @@ type DataSyncReconciler struct {
 
 const requeueTimeInveral = 10 * time.Second
 
+const defaultConcurrancyLimit = 4
+const defaultRetryLimit = 2
+const defaultBackoffLimit = 120 * time.Second
+
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	logger := logf.FromContext(ctx)
 
-	// 1. Fetch the DataSync instance
 	var dataSync crdv1.DataSync
 	if err := r.Get(ctx, req.NamespacedName, &dataSync); err != nil {
 		if errors.IsNotFound(err) {
@@ -62,11 +65,16 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		logger.Error(err, "Failed to get operator config")
 	}
 
-	controllerConfig, err := controllerutil.ExtractOperatorConfig(operatorConfigmap)
+	var controllerConfig *controllerutil.OperatorConfig
+	controllerConfig, err = controllerutil.ExtractOperatorConfig(operatorConfigmap)
 
 	if err != nil {
-		logger.Error(err, "Failed to get operator config")
-		return ctrl.Result{}, err
+		logger.Info("Failed to get operator config using default")
+		controllerConfig = &controllerutil.OperatorConfig{
+			Concurrency:          defaultConcurrancyLimit,
+			RetryLimit:           defaultRetryLimit,
+			RetryBackoffDuration: defaultBackoffLimit,
+		}
 	}
 
 	currentPhase := dataSync.Status.Phase
@@ -78,7 +86,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	case crdv1.DataSyncPhaseQueued:
 		return r.attemptSyncingOfResource(ctx, &dataSync, controllerConfig.Concurrency)
 	case crdv1.DataSyncPhaseSyncing:
-		return r.transitonFromSyncing(ctx, &dataSync, controllerConfig.RetryLimit)
+		return r.transitonFromSyncing(ctx, &dataSync, controllerConfig.RetryLimit, controllerConfig.RetryBackoffDuration)
 	case crdv1.DataSyncPhaseCompleted, crdv1.DataSyncPhaseFailed:
 		logger.Info("Resource is in a terminal state, no action needed.")
 		return ctrl.Result{}, nil
@@ -141,7 +149,7 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 	return ctrl.Result{}, nil
 }
 
-func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync, retryLimit int) (ctrl.Result, error) {
+func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync, retryLimit int, retryBackoff time.Duration) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	// Check if there is an error occurring in the sync
@@ -149,7 +157,7 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 
 	if syncError != nil {
 		logger.Error(syncError, "A sync error has occurred.")
-		return r.handleSyncError(ctx, ds, syncError, "A error has occurred while syncing", retryLimit)
+		return r.handleSyncError(ctx, ds, syncError, "A error has occurred while syncing", retryLimit, retryBackoff)
 	}
 
 	// Check if the sync is done is not done
@@ -201,8 +209,8 @@ func (r *DataSyncReconciler) handleResourceUpdateError(ctx context.Context, ds *
 
 // TODO: This is where we want to do error handling for sync specific errors
 //
-//	We need to implement retry and backoff. These values are found in the configmap
-func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string, retryLimit int) (ctrl.Result, error) {
+//	We need to implement retry. These values are found in the configmap
+func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string, retryLimit int, retryBackoff time.Duration) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 	logger.Error(originalErr, message)
 
@@ -216,7 +224,7 @@ func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.Data
 
 	// if we've failed less times than the retry limit then we just go again
 	if ds.Status.FailureCount < retryLimit {
-		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
+		return ctrl.Result{RequeueAfter: retryBackoff}, nil
 	}
 
 	r.Recorder.Eventf(ds, "Error", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %s", retryLimit)
