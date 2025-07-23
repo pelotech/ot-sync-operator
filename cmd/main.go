@@ -28,6 +28,7 @@ import (
 	"pelotech/ot-sync-operator/internal/controller"
 	generalutils "pelotech/ot-sync-operator/internal/general-utils"
 	kubectlclient "pelotech/ot-sync-operator/internal/kubectl-client"
+	resourcemanager "pelotech/ot-sync-operator/internal/resource-manager"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -241,9 +242,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Check for our configmap that is used to configure the operator
-	//      if it is not there go ahead and create a default one
-
 	// Check for S3 secrets and config map to allow for pulling from either s3 or a registry
 	// We also do this in an init container on the pod when deployed.
 	_, err = generalutils.GetSecret(context.Background(), tmpClient, authSecretName, operatorNamespace)
@@ -263,9 +261,10 @@ func main() {
 	}
 
 	if err := (&controller.DataSyncReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("datasync-controller"),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("datasync-controller"),
+		ResourceManager: &resourcemanager.DataSyncResourceManager{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DataSync")
 		os.Exit(1)
