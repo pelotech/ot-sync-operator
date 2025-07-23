@@ -15,39 +15,15 @@ import (
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 func CreateStorageManifestsForDataSyncResource(
 	r crdv1.Resource,
 	ds *crdv1.DataSync,
 ) (*snapshotv1.VolumeSnapshot, *cdiv1beta1.DataVolume, error) {
-	volumeSnapshot := createVolumeSnapshot(VolumeSnapshotConfig{
-		ResourceName: ds.Spec.WorkspaceID,
-		Namespace:    ds.Namespace,
-		Labels:       ds.Labels,
-	})
+	volumeSnapshot := createVolumeSnapshot(r, ds)
 
-	dataVolumeConfig := &DataVolumeConfig{
-		OwnerUID:     ds.UID,
-		OwnerName:    ds.Name,
-		ResourceName: ds.Name,
-		Namespace:    ds.Namespace,
-		Resource:     r,
-		Labels:       ds.Labels,
-		AddDiskSpace: ds.Spec.AskForDiskSpace,
-		SecretRef:    ds.Spec.SecretRef,
-	}
-
-	if ds.Spec.CertConfigMap != nil {
-		dataVolumeConfig.ConfigMapRef = ds.Spec.CertConfigMap
-	}
-
-	if ds.Spec.StorageClass != nil {
-		dataVolumeConfig.StorageClass = ds.Spec.StorageClass
-	}
-
-	dataVolume, err := createDataVolume(dataVolumeConfig)
+	dataVolume, err := createDataVolume(r, ds)
 
 	if err != nil {
 		return nil, nil, err
@@ -56,21 +32,8 @@ func CreateStorageManifestsForDataSyncResource(
 	return volumeSnapshot, dataVolume, nil
 }
 
-type DataVolumeConfig struct {
-	OwnerUID     types.UID
-	OwnerName    string
-	ResourceName string
-	Namespace    string
-	Resource     crdv1.Resource
-	Labels       map[string]string
-	AddDiskSpace bool
-	SecretRef    string
-	ConfigMapRef *string
-	StorageClass *string
-}
-
-func createDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) {
-	diskSize, err := calculateDiskSize(config.Resource.DiskSize, config.AddDiskSpace)
+func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVolume, error) {
+	diskSize, err := calculateDiskSize(r.DiskSize, ds.Spec.AskForDiskSpace)
 
 	if err != nil {
 		return nil, err
@@ -82,15 +45,17 @@ func createDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) 
 			APIVersion:         "v1",
 			BlockOwnerDeletion: &blockOwnerDeletion,
 			Kind:               "DataSync",
-			Name:               config.OwnerName,
-			UID:                config.OwnerUID,
+			Name:               ds.Name,
+			UID:                ds.UID,
 		},
 	}
 
+	resourceName := createResourceName(r, ds)
+
 	meta := metav1.ObjectMeta{
-		Name:            config.ResourceName,
-		Namespace:       config.Namespace,
-		Labels:          config.Labels,
+		Name:            resourceName,
+		Namespace:       ds.Namespace,
+		Labels:          withOperatorLabels(ds.Labels, ds.Name, ds.Spec.Version),
 		OwnerReferences: ownerReferences,
 		Annotations: map[string]string{
 			"cdi.kubevirt.io/storage.bind.immediate.requested": "true",
@@ -106,29 +71,29 @@ func createDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) 
 		},
 	}
 
-	if config.StorageClass != nil {
-		pvc.StorageClassName = config.StorageClass
+	if ds.Spec.StorageClass != nil {
+		pvc.StorageClassName = ds.Spec.StorageClass
 	}
 
 	var source *cdiv1beta1.DataVolumeSource
 
-	if config.Resource.SourceType == "s3" {
+	if r.SourceType == "s3" {
 		source = &cdiv1beta1.DataVolumeSource{
 			S3: &cdiv1beta1.DataVolumeSourceS3{
-				URL:       config.Resource.URL,
-				SecretRef: config.SecretRef,
+				URL:       r.URL,
+				SecretRef: ds.Spec.SecretRef,
 			},
 		}
 	} else {
-		if config.ConfigMapRef == nil {
+		if ds.Spec.CertConfigMap == nil {
 			errMsg := "attempted to create a datavolume without a registry but no certConfigMap was provided"
 			return nil, errors.New(errMsg)
 		}
 		source = &cdiv1beta1.DataVolumeSource{
 			Registry: &cdiv1beta1.DataVolumeSourceRegistry{
-				URL:           &config.Resource.URL,
-				CertConfigMap: config.ConfigMapRef,
-				SecretRef:     &config.SecretRef,
+				URL:           &r.URL,
+				CertConfigMap: ds.Spec.CertConfigMap,
+				SecretRef:     &ds.Spec.SecretRef,
 			},
 		}
 	}
@@ -146,28 +111,35 @@ func createDataVolume(config *DataVolumeConfig) (*cdiv1beta1.DataVolume, error) 
 	return dv, nil
 }
 
-type VolumeSnapshotConfig struct {
-	ResourceName  string
-	Namespace     string
-	Labels        map[string]string
-	SnapshotClass *string
-}
+func createVolumeSnapshot(r crdv1.Resource, ds *crdv1.DataSync) *snapshotv1.VolumeSnapshot {
+	blockOwnerDeletion := true
+	ownerReferences := []metav1.OwnerReference{
+		{
+			APIVersion:         "v1",
+			BlockOwnerDeletion: &blockOwnerDeletion,
+			Kind:               "DataSync",
+			Name:               ds.Name,
+			UID:                ds.UID,
+		},
+	}
 
-func createVolumeSnapshot(config VolumeSnapshotConfig) *snapshotv1.VolumeSnapshot {
+	resourceName := createResourceName(r, ds)
+
 	meta := metav1.ObjectMeta{
-		Name:      config.ResourceName,
-		Namespace: config.Namespace,
-		Labels:    config.Labels,
+		Name:            resourceName,
+		Namespace:       ds.Namespace,
+		Labels:          withOperatorLabels(ds.Labels, ds.Name, ds.Spec.Version),
+		OwnerReferences: ownerReferences,
 	}
 
 	spec := snapshotv1.VolumeSnapshotSpec{
 		Source: snapshotv1.VolumeSnapshotSource{
-			PersistentVolumeClaimName: &config.ResourceName,
+			PersistentVolumeClaimName: &resourceName,
 		},
 	}
 
-	if config.SnapshotClass != nil {
-		spec.VolumeSnapshotClassName = config.SnapshotClass
+	if ds.Spec.SnapshotClass != nil {
+		spec.VolumeSnapshotClassName = ds.Spec.SnapshotClass
 	}
 
 	return &snapshotv1.VolumeSnapshot{
@@ -197,4 +169,15 @@ func calculateDiskSize(diskSize string, addDiskSize bool) (string, error) {
 
 	augmentedNum := math.Ceil(numPart * 1.33)
 	return fmt.Sprintf("%d%s", int(augmentedNum), unitPart), nil
+}
+
+func withOperatorLabels(labels map[string]string, ownerName, version string) map[string]string {
+	labels[crdv1.DataSyncOwnerLabel] = ownerName
+	labels[crdv1.DataSyncVersionLabel] = version
+
+	return labels
+}
+
+func createResourceName(r crdv1.Resource, ds *crdv1.DataSync) string {
+	return fmt.Sprintf("%s-%s-%s", ds.Spec.WorkspaceID, ds.Spec.Version, r.Name)
 }
