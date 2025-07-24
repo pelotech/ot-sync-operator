@@ -16,7 +16,7 @@ type Resource struct {
 	SourceType string `json:"sourceType"`
 
 	// DiskSize specifies the size of the disk, e.g., "10Gi", "500Mi".
-	// +kubebuilder:validation:Pattern=`^[0-9.]+[A-Za-z]+$`
+	// +kubebuilder:validation:Pattern=`^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$`
 	DiskSize string `json:"diskSize"`
 }
 

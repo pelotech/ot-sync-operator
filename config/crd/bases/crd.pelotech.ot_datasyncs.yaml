@@ -67,7 +67,7 @@ spec:
                     diskSize:
                       description: DiskSize specifies the size of the disk, e.g.,
                         "10Gi", "500Mi".
-                      pattern: ^[0-9.]+[A-Za-z]+$
+                      pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$
                       type: string
                     name:
                       minLength: 1
