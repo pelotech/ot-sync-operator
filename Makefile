@@ -66,6 +66,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= ot-sync-operator-test-e2e
+DEV_CLUSTER_CTX := kind-$(KIND_CLUSTER)
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -74,6 +75,15 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 		exit 1; \
 	}
 	$(KIND) create cluster --name $(KIND_CLUSTER)
+	# Install latest kubevirt release so we can deploy datavolumes
+	export RELEASE=$$(curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt); \
+	kubectl --context=$(DEV_CLUSTER_CTXR)  apply -f https://github.com/kubevirt/kubevirt/releases/download/$${RELEASE}/kubevirt-operator.yaml; \
+	kubectl --context=$(DEV_CLUSTER_CTX) apply -f https://github.com/kubevirt/kubevirt/releases/download/$${RELEASE}/kubevirt-cr.yaml
+	kubectl --context=$(DEV_CLUSTER_CTX) -n kubevirt wait kv kubevirt --for condition=Available --timeout=10m
+	# Install the datavolumes CDI
+	export VERSION=$$(curl -s https://api.github.com/repos/kubevirt/containerized-data-importer/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+	kubectl --context=$(DEV_CLUSTER_CTX) create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$${VERSION}/cdi-operator.yaml; \
+	kubectl --context=$(DEV_CLUSTER_CTX) create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$${VERSION}/cdi-cr.yaml
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
@@ -99,7 +109,7 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet ## Build manager binary.}
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
