@@ -14,4 +14,4 @@ spec:
     - name: "test5"
       url: "s3.5.com"
       sourceType: "s3"
-      diskSize: "20mb"
+      diskSize: "20Mi"
