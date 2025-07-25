@@ -12,7 +12,71 @@ More information can be found via the [Kubebuilder Documentation](https://book.k
 - go version v1.24.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
+- kind version v0.29.0+
 - Access to a Kubernetes v1.11.3+ cluster.
+
+### Local Development
+
+To develop locally the following steps must be taken to run the application.
+
+
+#### Init the cluster
+
+To init the cluster please run
+
+```bash
+make setup-test-e2e
+```
+
+This command will stand up a kind cluster locally. The cluster will have all all dependencies installed.
+
+> **NOTE**: Please ensure you are using the correct context before running the below commands. We are installing stuff into the cluster.
+
+Next run the below command to install our CRD onto your cluster.
+
+```bash
+make install
+```
+
+Finally please install the dependencies required for the operator to run. Currently the operator requires a secret and configmap to be installed in the same namespace as it. These resources are required for pulling from s3 and other resources. In the actual deployed operator we will check for these in a initContainer however we still look for them in the code as well.
+
+To install please run the below command.
+
+> **NOTE**: The yamls in the test/secret-yamls directory contain only dummy values. You will need to populate them with real values if you want to pull locally from a registry. Instructions on what to do to get the correct values can be found in the yaml files within the directory.
+
+
+```bash
+kubectl apply -f test/secret-yamls
+```
+
+#### Developing locally
+
+To start the operator outside of the cluster please run the below command. This will run the operator on your machine. Please not that this does not support hot reloading. You will need to restart the server as they make changes.
+
+```bash
+make run
+```
+
+##### Making Changes to the shape of our CRD.
+
+If you need to make changes to the shape of the CRD (ie. changing the datasync_types file) you will need to regenerate manifests and code created via kubebuilder. To do so please run the following commands in order.
+
+The below command will uninstall your CRD from the cluster.
+```bash
+make uninstall
+```
+
+Then run these commands to regenerate the code and manifests.
+
+```bash
+make generate
+make manifests
+```
+
+Finally re-install your CRD.
+```
+make install
+```
 
 ### To Deploy on the cluster
 **Build and push your image to the location specified by `IMG`:**
