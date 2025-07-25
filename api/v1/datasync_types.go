@@ -6,8 +6,8 @@ import (
 
 // Condition types and reasons
 const (
-	DataSyncTypeReady    string = "Ready"
-	DataSyncTypeFailed   string = "Failed"
+	DataSyncTypeReady  string = "Ready"
+	DataSyncTypeFailed string = "Failed"
 )
 
 // DataSync Phases
