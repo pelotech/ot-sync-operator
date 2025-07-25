@@ -6,12 +6,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: workspace-1-sync
 spec:
-  workspaceId: "1"
+  workspaceId: "lab-151"
   askForDiskSpace: false
-  secretRef: "workspace-1-secret"
+  secretRef: "lab-vm-images-cache-s3-gov-creds"
   version: "1.0.0"
+  storageClass: "gp3"
   resources:
-    - name: "test"
-      url: "s3.1.com"
+    - name: "attacker"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-151/1.0.0/attacker.qcow2"
       sourceType: "s3"
-      diskSize: "20Mi"
+      diskSize: "24Gi"
