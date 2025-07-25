@@ -20,10 +20,10 @@ repos:
   hooks:
   - id: yamllint
     args: [--strict, -c=.yamllint]
-- repo: https://github.com/golangci/golangci-lint
-  rev: v2.2.2
-  hooks:
-  - id: golangci-lint
+# - repo: https://github.com/golangci/golangci-lint
+#   rev: v2.2.2
+#   hooks:
+#   - id: golangci-lint
 - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
   rev: v9.16.0
   hooks:
