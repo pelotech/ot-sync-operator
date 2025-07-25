@@ -24,13 +24,14 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	"pelotech/ot-sync-operator/internal/controller"
 	generalutils "pelotech/ot-sync-operator/internal/general-utils"
 	kubectlclient "pelotech/ot-sync-operator/internal/kubectl-client"
 	resourcemanager "pelotech/ot-sync-operator/internal/resource-manager"
+
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -235,22 +236,16 @@ func main() {
 
 	// Standup our client we will use to deploy resources inside the controller
 
-	kubectlConfig, err := kubectlclient.LoadKubectlConfig(runningInCluster)
-
-	if err != nil {
-		setupLog.Error(err, "unable to load kubectl", "controller", "DataSync")
-		os.Exit(1)
-	}
-
-	tmpClient, err := client.New(kubectlConfig, client.Options{Scheme: clientgoscheme.Scheme})
-
-	if err != nil {
-		setupLog.Error(err, "unable to load resource client", "controller", "DataSync")
-		os.Exit(1)
-	}
-
 	// Check for S3 secrets and config map to allow for pulling from either s3 or a registry
 	// We also do this in an init container on the pod when deployed.
+	kubeConfig, err := kubectlclient.LoadKubectlConfig(runningInCluster)
+
+	if err != nil {
+		setupLog.Error(err, "unable to load kubeconfig file")
+	}
+
+	tmpClient, err := client.New(kubeConfig, client.Options{})
+
 	_, err = generalutils.GetSecret(context.Background(), tmpClient, authSecretName, operatorNamespace)
 
 	if err != nil {
