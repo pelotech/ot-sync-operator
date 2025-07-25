@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datasync-operator-config
+  namespace: default
+data:
+  concurrency: "2"
+  retryLimit: "2"
+  retryBackoffDuration: "5m"

@@ -1,0 +1,17 @@
+apiVersion: crd.pelotech.ot/v1
+kind: DataSync
+metadata:
+  labels:
+    app.kubernetes.io/name: ot-sync-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: workspace-3-sync
+spec:
+  workspaceId: "3"
+  askForDiskSpace: false
+  secretRef: "workspace-3-secret"
+  version: "1.0.0"
+  resources:
+    - name: "test2"
+      url: "s3.3.com"
+      sourceType: "s3"
+      diskSize: "20Mi"
