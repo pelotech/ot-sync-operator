@@ -3,7 +3,6 @@ package contollerutils
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	"strconv"
 	"time"
@@ -40,25 +39,11 @@ func IndexDataSyncByPhase(rawObj client.Object) []string {
 	return []string{ds.Status.Phase}
 }
 
-// TODO: Add actual logic to get this done.
-func SyncIsComplete(ds *crdv1.DataSync) bool {
-	isDone := rand.Float64() > .5
-
-	return isDone
-}
-
-// TODO: Add actual logic to get this done.
-func SyncErrorOccurred(ds *crdv1.DataSync) error {
-	hasError := rand.Float64() > .9
-
-	if !hasError {
-		return nil
+func ExtractOperatorConfig(configMap *corev1.ConfigMap) (*OperatorConfig, error) {
+	if configMap == nil {
+		return nil, fmt.Errorf("The supplied reference to the configMap was nil")
 	}
 
-	return fmt.Errorf("this is a mocked sync error")
-}
-
-func ExtractOperatorConfig(configMap *corev1.ConfigMap) (*OperatorConfig, error) {
 	var ok bool
 
 	concurrencyStr, ok := configMap.Data["concurrency"]
