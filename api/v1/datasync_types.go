@@ -24,22 +24,32 @@ type Resource struct {
 type DataSyncSpec struct {
 	// The unique identifier for the workspace to be synced.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:required
 	WorkspaceID string `json:"workspaceId"`
 
+	// +kubebuilder:validation:required
 	// +kubebuilder:validation:minlength=1
 	Version string `json:"version"`
 
+	// +kubebuilder:validation:required
 	AskForDiskSpace bool `json:"askForDiskSpace"`
 
+	// +kubebuilder:validation:required
 	// +kubebuilder:validation:minlength=1
 	SecretRef string `json:"secretRef"`
 
 	// resources is a list of workspace resources that have data that needs to be synced.
+	// +kubebuilder:validation:required
 	// +kubebuilder:validation:MinItems=0
 	Resources []Resource `json:"resources"`
 
-	StorageClass  *string `json:"storageClass,omitempty"`
+	// +kubebuilder:validation:Optional
+	StorageClass *string `json:"storageClass,omitempty"`
+
+	// +kubebuilder:validation:Optional
 	CertConfigMap *string `json:"certConfigMap,omitempty"`
+
+	// +kubebuilder:validation:Optional
 	SnapshotClass *string `json:"snapshotClass,omitempty"`
 }
 
