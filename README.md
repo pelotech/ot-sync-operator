@@ -1,5 +1,5 @@
-# ot-sync-operator
-K8s operator designed to orchestrate the syncing of datavolumes required for workspace instances launched in OpenTerrian
+# OT-sync-operator
+K8s operator designed to orchestrate the syncing of resources required for workspace instances launched in OpenTerrian
 
 ## Description
 This project is currently in active development and should be considered pre-alpha in its current state.
@@ -51,7 +51,7 @@ kubectl apply -f test/secret-yamls
 
 #### Developing locally
 
-To start the operator outside of the cluster please run the below command. This will run the operator on your machine. Please not that this does not support hot reloading. You will need to restart the server as they make changes.
+To start the operator outside of the cluster please run the below command. This will run the operator on your machine. Please note that this does not support hot reloading. You will need to restart the server as you make changes.
 
 ```bash
 make run
