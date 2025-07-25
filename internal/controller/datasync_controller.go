@@ -139,7 +139,7 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 	err = r.ResourceManager.CreateResources(ctx, r.Client, ds)
 
 	if err != nil {
-		r.Recorder.Eventf(ds, "Warning", "ResourceCreationFailed", "Failed to create resources.")
+		r.Recorder.Eventf(ds, "Warning", "ResourceCreationFailed", "Failed to create resources: "+err.Error())
 		return r.handleResourceCreationError(ctx, ds, err)
 	}
 
@@ -281,7 +281,7 @@ func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.Data
 	})
 
 	if err := r.Status().Update(ctx, ds); err != nil {
-		logger.Error(err, "Could not update status to Failed after an initial update error")
+		logger.Error(err, "Could not update status to Failed after an sync error")
 	}
 
 	err := r.ResourceManager.TearDownAllResources(ctx, r.Client, ds)
