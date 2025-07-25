@@ -47,7 +47,6 @@ type DataSyncReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 
 const requeueTimeInveral = 10 * time.Second
-
 const defaultConcurrancyLimit = 4
 const defaultRetryLimit = 2
 const defaultBackoffLimit = 120 * time.Second
