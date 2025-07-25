@@ -4,6 +4,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Condition types and reasons
+const (
+	DataSyncTypeReady    string = "Ready"
+	DataSyncTypeFailed   string = "Failed"
+)
+
+// DataSync Phases
+const (
+	DataSyncPhaseQueued    string = "Queued"
+	DataSyncPhaseSyncing   string = "Syncing"
+	DataSyncPhaseCompleted string = "Completed"
+	DataSyncPhaseFailed    string = "Failed"
+)
+
+const (
+	DataSyncOwnerLabel   string = "owner"
+	DataSyncVersionLabel string = "version"
+)
+
 // Resources represent a resource which is used in a workspace that has some data that needs to be synced
 type Resource struct {
 	// +kubebuilder:validation:MinLength=1
@@ -66,25 +85,6 @@ type DataSyncStatus struct {
 
 	FailureCount int `json:"failureCount,omitempty"`
 }
-
-// Condition types and reasons
-const (
-	DataSyncTypeReady  string = "Ready"
-	DataSyncTypeFailed string = "Failed"
-)
-
-// DataSync Phases
-const (
-	DataSyncPhaseQueued    string = "Queued"
-	DataSyncPhaseSyncing   string = "Syncing"
-	DataSyncPhaseCompleted string = "Completed"
-	DataSyncPhaseFailed    string = "Failed"
-)
-
-const (
-	DataSyncOwnerLabel   string = "owner"
-	DataSyncVersionLabel string = "version"
-)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
