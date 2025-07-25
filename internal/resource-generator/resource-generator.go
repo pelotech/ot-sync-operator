@@ -33,7 +33,7 @@ func CreateStorageManifestsForDataSyncResource(
 }
 
 func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVolume, error) {
-	diskSize, err := calculateDiskSize(r.DiskSize, ds.Spec.AskForDiskSpace)
+	diskSize, err := CalculateDiskSize(r.DiskSize, ds.Spec.AskForDiskSpace)
 
 	if err != nil {
 		return nil, err
@@ -62,11 +62,17 @@ func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVol
 		},
 	}
 
+	diskSizeResource, err := resource.ParseQuantity(diskSize)
+
+	if err != nil {
+		return nil, err
+	}
+
 	pvc := &corev1.PersistentVolumeClaimSpec{
 		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 		Resources: corev1.VolumeResourceRequirements{
 			Requests: corev1.ResourceList{
-				corev1.ResourceStorage: resource.MustParse(diskSize),
+				corev1.ResourceStorage: diskSizeResource,
 			},
 		},
 	}
@@ -148,7 +154,7 @@ func createVolumeSnapshot(r crdv1.Resource, ds *crdv1.DataSync) *snapshotv1.Volu
 	}
 }
 
-func calculateDiskSize(diskSize string, addDiskSize bool) (string, error) {
+func CalculateDiskSize(diskSize string, addDiskSize bool) (string, error) {
 	re := regexp.MustCompile(`([0-9.]+)([a-zA-Z]+)`)
 
 	matches := re.FindStringSubmatch(diskSize)
