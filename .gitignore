@@ -25,6 +25,3 @@ go.work
 *.swp
 *.swo
 *~
-
-# Ignore test secrets
-test/secret-yamls/
