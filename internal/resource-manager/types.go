@@ -9,4 +9,6 @@ import (
 type ResourceManager[T any] interface {
 	CreateResources(ctx context.Context, k8sClient client.Client, resource *T) error
 	TearDownAllResources(ctx context.Context, k8sClient client.Client, resource *T) error
+	ResourcesAreReady(ctx context.Context, k8sClient client.Client, resource *T) (bool, error)
+	ResourcesHaveErrors(ctx context.Context, k8sClient client.Client, resource *T) error
 }

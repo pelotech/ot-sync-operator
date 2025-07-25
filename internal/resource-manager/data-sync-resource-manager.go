@@ -2,11 +2,12 @@ package resourcemanager
 
 import (
 	"context"
+	"fmt"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 
-	corev1 "k8s.io/api/core/v1"
-
 	resourcegen "pelotech/ot-sync-operator/internal/resource-generator"
+
+	corev1 "k8s.io/api/core/v1"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
@@ -14,7 +15,10 @@ import (
 )
 
 type DataSyncResourceManager struct {
+	MaxDataVolumeRestartCount int32
 }
+
+const dataVolumeDonePhase = "Succeeded"
 
 // Create resources for a given datasync. Stops creating them if
 // a single resource fails to create. Does not cleanup after itself
@@ -51,12 +55,7 @@ func (dvrm *DataSyncResourceManager) TearDownAllResources(
 	k8sClient client.Client,
 	ds *crdv1.DataSync,
 ) error {
-	labelsToMatch := map[string]string{
-		crdv1.DataSyncOwnerLabel:   ds.Name,
-		crdv1.DataSyncVersionLabel: ds.Spec.Version,
-	}
-
-	deleteByLabels := client.MatchingLabels(labelsToMatch)
+	deleteByLabels := getLabelsToMatch(ds)
 
 	// First we tear down the PVCs that back the data volumes
 	err := k8sClient.DeleteAllOf(
@@ -95,4 +94,74 @@ func (dvrm *DataSyncResourceManager) TearDownAllResources(
 	}
 
 	return nil
+}
+
+// This function will check if the datavolumes assoicated with our Datasync
+// are ready. Currently we only check if the datavolumes are done syncing in our
+// manual process. We do not check if any of the other resources are ready.
+func (dsrm *DataSyncResourceManager) ResourcesAreReady(
+	ctx context.Context,
+	k8sClient client.Client,
+	ds *crdv1.DataSync,
+) (bool, error) {
+
+	searchLabels := getLabelsToMatch(ds)
+
+	listOps := []client.ListOption{
+		searchLabels,
+	}
+
+	dataVolumeList := &cdiv1beta1.DataVolumeList{}
+
+	if err := k8sClient.List(ctx, dataVolumeList, listOps...); err != nil {
+		return false, fmt.Errorf("failed to list datavolumeswith the datasync %s: %w", ds.Name, err)
+	}
+
+	dataVolumesReady := true
+
+	for _, dv := range dataVolumeList.Items {
+		if dv.Status.Phase != dataVolumeDonePhase {
+			dataVolumesReady = false
+			break
+		}
+	}
+
+	return dataVolumesReady, nil
+}
+
+// Check if our resources have errors that would require us to
+// scuttle the sync.
+func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
+	ctx context.Context,
+	k8sClient client.Client,
+	ds *crdv1.DataSync,
+) error {
+	searchLabels := getLabelsToMatch(ds)
+
+	listOps := []client.ListOption{
+		searchLabels,
+	}
+
+	dataVolumeList := &cdiv1beta1.DataVolumeList{}
+
+	if err := k8sClient.List(ctx, dataVolumeList, listOps...); err != nil {
+		return fmt.Errorf("failed to list datavolumeswith the datasync %s: %w", ds.Name, err)
+	}
+
+	for _, dv := range dataVolumeList.Items {
+		if dv.Status.RestartCount <= dsrm.MaxDataVolumeRestartCount {
+			return fmt.Errorf("a datavolume has restarted more than the max for a sync.")
+		}
+	}
+
+	return nil
+}
+
+func getLabelsToMatch(ds *crdv1.DataSync) client.MatchingLabels {
+	labelsToMatch := map[string]string{
+		crdv1.DataSyncOwnerLabel:   ds.Name,
+		crdv1.DataSyncVersionLabel: ds.Spec.Version,
+	}
+
+	return client.MatchingLabels(labelsToMatch)
 }
