@@ -68,7 +68,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	configMapName := "datasync-operator-config"
 	operatorConfigmap, err := generalutils.GetConfigMap(ctx, r.Client, configMapName, dataSync.Namespace)
 	if err != nil {
-		logger.Error(err, "Failed to get operator config")
+		logger.Info("No configmap containing operator config found")
 	}
 
 	var controllerConfig *controllerutil.OperatorConfig
@@ -131,7 +131,6 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 		return ctrl.Result{}, err
 	}
 
-	// If the limit is reached, requeue and wait
 	if len(syncingList.Items) >= syncLimit {
 		r.Recorder.Eventf(ds, "Normal", "WaitingToSync", "No more than %d DataSyncs can be syncing at once. Waiting...", syncLimit)
 		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
@@ -166,7 +165,7 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 	logger := logf.FromContext(ctx)
 
 	// Check if there is an error occurring in the sync
-	syncError := controllerutil.SyncErrorOccurred(ds)
+	syncError := r.ResourceManager.ResourcesHaveErrors(ctx, r.Client, ds)
 
 	if syncError != nil {
 		logger.Error(syncError, "A sync error has occurred.")
@@ -174,7 +173,11 @@ func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1
 	}
 
 	// Check if the sync is done is not done
-	isDone := controllerutil.SyncIsComplete(ds)
+	isDone, err := r.ResourceManager.ResourcesAreReady(ctx, r.Client, ds)
+
+	if err != nil {
+		logger.Error(err, "Unable to verify if resource is ready or not.")
+	}
 
 	if !isDone {
 		logger.Info("Sync is not complete. Requeueing.")
@@ -222,6 +225,7 @@ func (r *DataSyncReconciler) handleResourceUpdateError(ctx context.Context, ds *
 
 func (r *DataSyncReconciler) handleResourceCreationError(ctx context.Context, ds *crdv1.DataSync, originalErr error) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
+	logger.Info("Handling a reousrce creation failure")
 	logger.Error(originalErr, "Failed to create a resource when trying to intiate resource sync")
 
 	r.Recorder.Eventf(ds, "Warning", "ResourceCreationFailed", "Failed to create resources.")
@@ -261,14 +265,12 @@ func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.Data
 		logger.Error(err, "Failed to update resource failure count")
 	}
 
-	// if we've failed less times than the retry limit then we just go again
 	if ds.Status.FailureCount < retryLimit {
 		return ctrl.Result{RequeueAfter: retryBackoff}, nil
 	}
 
 	r.Recorder.Eventf(ds, "Error", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %s", retryLimit)
 
-	// Mark the resource as Failed
 	ds.Status.Phase = crdv1.DataSyncPhaseFailed
 	ds.Status.Message = "An error occurred durng reconciliation: " + originalErr.Error()
 	meta.SetStatusCondition(&ds.Status.Conditions, metav1.Condition{
@@ -278,7 +280,6 @@ func (r *DataSyncReconciler) handleSyncError(ctx context.Context, ds *crdv1.Data
 		Message: originalErr.Error(),
 	})
 
-	// Attempt to update the status to Failed, but return the original error
 	if err := r.Status().Update(ctx, ds); err != nil {
 		logger.Error(err, "Could not update status to Failed after an initial update error")
 	}
