@@ -24,6 +24,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	"pelotech/ot-sync-operator/internal/controller"
 	generalutils "pelotech/ot-sync-operator/internal/general-utils"
@@ -41,6 +43,8 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(crdv1.AddToScheme(scheme))
+	utilruntime.Must(cdiv1beta1.AddToScheme(scheme))
+	utilruntime.Must(snapshotv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -58,18 +62,19 @@ const (
 	operatorConfigMapNameDesc = "This configmap contains values used in the controller logic." +
 		" It allows for configuration of behavior"
 
-	probeAddrDesc         = "The address the probe endpoint binds to."
-	webhookCertPathDesc   = "The directory that contains the webhook certificate."
-	webhookCertNameDesc   = "The name of the webhook certificate file."
-	webhookCertKeyDesc    = "The name of the webhook key file."
-	metricsCertPathDesc   = "The directory that contains the metrics server certificate."
-	metricsCertNameDesc   = "The name of the metrics server certificate file."
-	metricsCertKeyDesc    = "The name of the metrics server key file."
-	enableHTTP2Desc       = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
-	runningInClusterDesc  = "Whether or not we running inside the cluster."
-	certConfigMapNameDesc = "The name of the configmap where we store our Cert info for s3 auth."
-	authSecretNameDesc    = "The name of the secret required for s3 auth."
-	operatorNamespaceDes  = "The namespace our operator is deployed to."
+	probeAddrDesc          = "The address the probe endpoint binds to."
+	webhookCertPathDesc    = "The directory that contains the webhook certificate."
+	webhookCertNameDesc    = "The name of the webhook certificate file."
+	webhookCertKeyDesc     = "The name of the webhook key file."
+	metricsCertPathDesc    = "The directory that contains the metrics server certificate."
+	metricsCertNameDesc    = "The name of the metrics server certificate file."
+	metricsCertKeyDesc     = "The name of the metrics server key file."
+	enableHTTP2Desc        = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
+	runningInClusterDesc   = "Whether or not we running inside the cluster."
+	certConfigMapNameDesc  = "The name of the configmap where we store our Cert info for s3 auth."
+	authSecretNameDesc     = "The name of the secret required for s3 auth."
+	operatorNamespaceDes   = "The namespace our operator is deployed to."
+	maxSyncRestartCountDes = "The maximum number of restarts we allow before we cancel a sync"
 )
 
 // nolint:gocyclo
@@ -87,6 +92,7 @@ func main() {
 	var certConfigMapName string
 	var authSecretName string
 	var operatorNamespace string
+	var maxSyncRestartCount int
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", metricsAddrDesc)
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", probeAddrDesc)
@@ -104,6 +110,7 @@ func main() {
 	flag.StringVar(&certConfigMapName, "cert-configmap-name", "lab-vm-images-registry-cert", certConfigMapNameDesc)
 	flag.StringVar(&authSecretName, "auth-secret-name", "lab-vm-images-cache-s3-creds", authSecretNameDesc)
 	flag.StringVar(&operatorNamespace, "operator-namespace", "default", operatorNamespaceDes)
+	flag.IntVar(&maxSyncRestartCount, "max-sync-restart", 2, maxSyncRestartCountDes)
 
 	opts := zap.Options{
 		Development: true,
@@ -260,11 +267,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	rm := &resourcemanager.DataSyncResourceManager{
+		MaxDataVolumeRestartCount: int32(maxSyncRestartCount),
+	}
+
 	if err := (&controller.DataSyncReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		Recorder:        mgr.GetEventRecorderFor("datasync-controller"),
-		ResourceManager: &resourcemanager.DataSyncResourceManager{},
+		ResourceManager: rm,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DataSync")
 		os.Exit(1)
