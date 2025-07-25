@@ -110,6 +110,10 @@ func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVol
 	}
 
 	dv := &cdiv1beta1.DataVolume{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cdi.kubevirt.io/v1beta1",
+			Kind:       "DataVolume",
+		},
 		ObjectMeta: meta,
 		Spec:       spec,
 	}
@@ -149,6 +153,10 @@ func createVolumeSnapshot(r crdv1.Resource, ds *crdv1.DataSync) *snapshotv1.Volu
 	}
 
 	return &snapshotv1.VolumeSnapshot{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "snapshot.storage.k8s.io/v1",
+			Kind:       "VolumeSnapshot",
+		},
 		ObjectMeta: meta,
 		Spec:       spec,
 	}
