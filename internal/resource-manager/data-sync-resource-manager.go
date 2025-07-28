@@ -5,6 +5,7 @@ import (
 	"fmt"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 
+	contollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
 	resourcegen "pelotech/ot-sync-operator/internal/resource-generator"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,7 +16,6 @@ import (
 )
 
 type DataSyncResourceManager struct {
-	MaxDataVolumeRestartCount int32
 }
 
 const dataVolumeDonePhase = "Succeeded"
@@ -134,6 +134,7 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	ctx context.Context,
 	k8sClient client.Client,
+	config    contollerutils.OperatorConfig,
 	ds *crdv1.DataSync,
 ) error {
 	searchLabels := getLabelsToMatch(ds)
@@ -149,7 +150,7 @@ func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	}
 
 	for _, dv := range dataVolumeList.Items {
-		if dv.Status.RestartCount >= dsrm.MaxDataVolumeRestartCount {
+		if dv.Status.RestartCount >= int32(config.RetryLimit) {
 			return fmt.Errorf("a datavolume has restarted more than the max for a sync.")
 		}
 	}
