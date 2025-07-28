@@ -149,7 +149,7 @@ func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	}
 
 	for _, dv := range dataVolumeList.Items {
-		if dv.Status.RestartCount <= dsrm.MaxDataVolumeRestartCount {
+		if dv.Status.RestartCount >= dsrm.MaxDataVolumeRestartCount {
 			return fmt.Errorf("a datavolume has restarted more than the max for a sync.")
 		}
 	}
