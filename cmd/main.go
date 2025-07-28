@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -16,6 +17,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -25,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
+	contollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
 	"pelotech/ot-sync-operator/internal/controller"
 	generalutils "pelotech/ot-sync-operator/internal/general-utils"
 	kubectlclient "pelotech/ot-sync-operator/internal/kubectl-client"
@@ -74,8 +77,10 @@ const (
 	runningInClusterDesc   = "Whether or not we running inside the cluster."
 	certConfigMapNameDesc  = "The name of the configmap where we store our Cert info for s3 auth."
 	authSecretNameDesc     = "The name of the secret required for s3 auth."
-	operatorNamespaceDes   = "The namespace our operator is deployed to."
-	maxSyncRestartCountDes = "The maximum number of restarts we allow before we cancel a sync"
+	operatorNamespaceDesc   = "The namespace our operator is deployed to."
+	maxSyncRestartCountDesc = "The maximum number of restarts we allow before we cancel a sync"
+	maxSyncConcurrencyDesc = "The maximum number of active syncs we allow at once"
+	syncBackoffDurationDesc = "The amount of time in seconds we will wait to backoff if there has been an issue"
 )
 
 // nolint:gocyclo
@@ -94,6 +99,8 @@ func main() {
 	var authSecretName string
 	var operatorNamespace string
 	var maxSyncRestartCount int
+	var maxSyncConcurrency int
+	var syncBackoffDurationSecondsCount int
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", metricsAddrDesc)
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", probeAddrDesc)
@@ -110,8 +117,10 @@ func main() {
 	flag.StringVar(&operatorConfigMapName, "operator-configmap", "datasync-operator-config", operatorConfigMapNameDesc)
 	flag.StringVar(&certConfigMapName, "cert-configmap-name", "lab-vm-images-registry-cert", certConfigMapNameDesc)
 	flag.StringVar(&authSecretName, "auth-secret-name", "lab-vm-images-cache-s3-creds", authSecretNameDesc)
-	flag.StringVar(&operatorNamespace, "operator-namespace", "default", operatorNamespaceDes)
-	flag.IntVar(&maxSyncRestartCount, "max-sync-restart", 2, maxSyncRestartCountDes)
+	flag.StringVar(&operatorNamespace, "operator-namespace", "default", operatorNamespaceDesc)
+	flag.IntVar(&maxSyncRestartCount, "max-sync-restart", 2, maxSyncRestartCountDesc)
+	flag.IntVar(&maxSyncConcurrency, "max-sync-concurrency", 2, maxSyncConcurrencyDesc)
+	flag.IntVar(&syncBackoffDurationSecondsCount, "error-backoff-duration", 60, syncBackoffDurationDesc)
 
 	opts := zap.Options{
 		Development: true,
@@ -217,6 +226,11 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "1f5c5280.pelotech.ot",
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				operatorNamespace: {},
+			},
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -262,15 +276,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	rm := &resourcemanager.DataSyncResourceManager{
-		MaxDataVolumeRestartCount: int32(maxSyncRestartCount),
+	defaultControllerConfig := contollerutils.OperatorConfig{
+		Concurrency: maxSyncConcurrency,
+		RetryLimit: maxSyncRestartCount,
+		RetryBackoffDuration: time.Duration(syncBackoffDurationSecondsCount) * time.Second,
 	}
+
 
 	if err := (&controller.DataSyncReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		Recorder:        mgr.GetEventRecorderFor("datasync-controller"),
-		ResourceManager: rm,
+		ResourceManager: &resourcemanager.DataSyncResourceManager{},
+		DefaultControllerConfig: defaultControllerConfig,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DataSync")
 		os.Exit(1)

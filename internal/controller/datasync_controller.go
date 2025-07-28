@@ -22,9 +22,10 @@ import (
 // DataSyncReconciler reconciles a DataSync object
 type DataSyncReconciler struct {
 	client.Client
-	Scheme          *runtime.Scheme
-	Recorder        record.EventRecorder
-	ResourceManager resourcemanager.ResourceManager[crdv1.DataSync]
+	Scheme                  *runtime.Scheme
+	Recorder                record.EventRecorder
+	ResourceManager         resourcemanager.ResourceManager[crdv1.DataSync]
+	DefaultControllerConfig controllerutil.OperatorConfig
 }
 
 // RBAC for our CRD
@@ -47,9 +48,7 @@ type DataSyncReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 
 const requeueTimeInveral = 10 * time.Second
-const defaultConcurrancyLimit = 4
-const defaultRetryLimit = 2
-const defaultBackoffLimit = 120 * time.Second
+const operatorConfigmapName = "datasync-operator-config"
 
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
@@ -64,8 +63,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	configMapName := "datasync-operator-config"
-	operatorConfigmap, err := generalutils.GetConfigMap(ctx, r.Client, configMapName, dataSync.Namespace)
+	operatorConfigmap, err := generalutils.GetConfigMap(ctx, r.Client, operatorConfigmapName, dataSync.Namespace)
 	if err != nil {
 		logger.Info("No configmap containing operator config found")
 	}
@@ -75,11 +73,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if err != nil {
 		logger.Info("Failed to get operator config using default")
-		controllerConfig = &controllerutil.OperatorConfig{
-			Concurrency:          defaultConcurrancyLimit,
-			RetryLimit:           defaultRetryLimit,
-			RetryBackoffDuration: defaultBackoffLimit,
-		}
+		controllerConfig = &r.DefaultControllerConfig
 	}
 
 	currentPhase := dataSync.Status.Phase
@@ -91,7 +85,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	case crdv1.DataSyncPhaseQueued:
 		return r.attemptSyncingOfResource(ctx, &dataSync, controllerConfig.Concurrency)
 	case crdv1.DataSyncPhaseSyncing:
-		return r.transitonFromSyncing(ctx, &dataSync, controllerConfig.RetryLimit, controllerConfig.RetryBackoffDuration)
+		return r.transitonFromSyncing(ctx, &dataSync, *controllerConfig)
 	case crdv1.DataSyncPhaseCompleted, crdv1.DataSyncPhaseFailed:
 		logger.Info("Resource is in a terminal state, no action needed.")
 		return ctrl.Result{}, nil
@@ -160,15 +154,15 @@ func (r *DataSyncReconciler) attemptSyncingOfResource(ctx context.Context, ds *c
 	return ctrl.Result{}, nil
 }
 
-func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync, retryLimit int, retryBackoff time.Duration) (ctrl.Result, error) {
+func (r *DataSyncReconciler) transitonFromSyncing(ctx context.Context, ds *crdv1.DataSync, opConfig controllerutil.OperatorConfig) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	// Check if there is an error occurring in the sync
-	syncError := r.ResourceManager.ResourcesHaveErrors(ctx, r.Client, ds)
+	syncError := r.ResourceManager.ResourcesHaveErrors(ctx, r.Client, opConfig, ds)
 
 	if syncError != nil {
 		logger.Error(syncError, "A sync error has occurred.")
-		return r.handleSyncError(ctx, ds, syncError, "A error has occurred while syncing", retryLimit, retryBackoff)
+		return r.handleSyncError(ctx, ds, syncError, "A error has occurred while syncing", opConfig.RetryLimit, opConfig.RetryBackoffDuration)
 	}
 
 	// Check if the sync is done is not done
