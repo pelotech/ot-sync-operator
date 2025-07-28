@@ -11,6 +11,7 @@ spec:
   secretRef: "lab-vm-images-cache-s3-gov-creds"
   version: "1.0.0"
   storageClass: "gp3"
+  snapshotClass: "ebs-snapshot"
   resources:
     - name: "attacker"
       url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-151/1.0.0/attacker.qcow2"
