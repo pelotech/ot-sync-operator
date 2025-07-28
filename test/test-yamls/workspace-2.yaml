@@ -10,6 +10,8 @@ spec:
   askForDiskSpace: false
   secretRef: "lab-vm-images-cache-s3-gov-creds"
   version: "2.0.0"
+  storageClass: "gp3"
+  snapshotClass: "ebs-snapshot"
   resources:
     - name: "analyst01"
       url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-033/2.0.0/analyst01.qcow2"
