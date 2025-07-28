@@ -91,6 +91,7 @@ type DataSyncStatus struct {
 // +kubebuilder:resource:path=datasyncs,scope=Namespaced,shortName=ds,singular=datasync
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="The current phase of the DataSync."
 // +kubebuilder:printcolumn:name="WorkspaceID",type="string",JSONPath=".spec.workspaceId",description="The ID of the workspace being synced."
+// +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="The version of the workspace we are syncing."
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DataSync is the Schema for the datasyncs API.

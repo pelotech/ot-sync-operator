@@ -25,6 +25,10 @@ spec:
       jsonPath: .spec.workspaceId
       name: WorkspaceID
       type: string
+    - description: The version of the workspace we are syncing.
+      jsonPath: .spec.version
+      name: Version
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
