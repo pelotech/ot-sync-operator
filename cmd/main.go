@@ -82,7 +82,8 @@ const (
 	operatorNamespaceDesc        = "The namespace our operator is deployed to."
 	maxSyncRestartCountDesc      = "The maximum number of restarts we allow before we cancel a sync."
 	maxSyncConcurrencyDesc       = "The maximum number of active syncs we allow at once."
-	syncBackoffDurationDesc      = "The amount of time in seconds we will wait to backoff if there has been an issue."
+	syncBackoffDurationDesc      = "The amount of time we will wait to backoff if there has been an issue."
+	maxSyncDurationDesc          = "The maximum amount of time we will wait for a sync to complete."
 	runtimeBehaviorConfigMapDesc = "The name of the configmap we will look at for dynamic behavior if present."
 )
 
@@ -103,7 +104,8 @@ func main() {
 	var operatorNamespace string
 	var maxSyncRestartCount int
 	var maxSyncConcurrency int
-	var syncBackoffDurationSecondsCount int
+	var syncBackoffDurationStr string
+	var maxSyncDurationStr string
 	var runtimeConfigMapName string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", metricsAddrDesc)
@@ -124,7 +126,8 @@ func main() {
 	flag.StringVar(&operatorNamespace, "operator-namespace", "default", operatorNamespaceDesc)
 	flag.IntVar(&maxSyncRestartCount, "max-sync-restart", 2, maxSyncRestartCountDesc)
 	flag.IntVar(&maxSyncConcurrency, "max-sync-concurrency", 2, maxSyncConcurrencyDesc)
-	flag.IntVar(&syncBackoffDurationSecondsCount, "error-backoff-duration", 60, syncBackoffDurationDesc)
+	flag.StringVar(&syncBackoffDurationStr, "error-backoff-duration", "60s", syncBackoffDurationDesc)
+	flag.StringVar(&maxSyncDurationStr, "max-sync-duration", "60m", syncBackoffDurationDesc)
 	flag.StringVar(&runtimeConfigMapName, "runtime-config-name", "datasync-operator-config", runtimeBehaviorConfigMapDesc)
 
 	opts := zap.Options{
@@ -281,10 +284,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	syncBackoffDuration, err := time.ParseDuration(syncBackoffDurationStr)
+
+	if err != nil {
+		setupLog.Error(err, "the provided sync backoff duration is not valid.")
+		os.Exit(1)
+	}
+
+	maxSyncDuration, err := time.ParseDuration(maxSyncDurationStr)
+
+	if err != nil {
+		setupLog.Error(err, "the provided max sync duration is not valid.")
+		os.Exit(1)
+	}
+
 	defaultControllerConfig := dynamicconfigservice.OperatorConfig{
 		Concurrency:          maxSyncConcurrency,
 		RetryLimit:           maxSyncRestartCount,
-		RetryBackoffDuration: time.Duration(syncBackoffDurationSecondsCount) * time.Second,
+		RetryBackoffDuration: syncBackoffDuration,
+		MaxSyncDuration:      maxSyncDuration,
 	}
 
 	rm := &resourcemanager.DataSyncResourceManager{}
