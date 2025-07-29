@@ -68,21 +68,22 @@ const (
 	operatorConfigMapNameDesc = "This configmap contains values used in the controller logic." +
 		" It allows for configuration of behavior"
 
-	probeAddrDesc           = "The address the probe endpoint binds to."
-	webhookCertPathDesc     = "The directory that contains the webhook certificate."
-	webhookCertNameDesc     = "The name of the webhook certificate file."
-	webhookCertKeyDesc      = "The name of the webhook key file."
-	metricsCertPathDesc     = "The directory that contains the metrics server certificate."
-	metricsCertNameDesc     = "The name of the metrics server certificate file."
-	metricsCertKeyDesc      = "The name of the metrics server key file."
-	enableHTTP2Desc         = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
-	runningInClusterDesc    = "Whether or not we running inside the cluster."
-	certConfigMapNameDesc   = "The name of the configmap where we store our Cert info for s3 auth."
-	authSecretNameDesc      = "The name of the secret required for s3 auth."
-	operatorNamespaceDesc   = "The namespace our operator is deployed to."
-	maxSyncRestartCountDesc = "The maximum number of restarts we allow before we cancel a sync"
-	maxSyncConcurrencyDesc  = "The maximum number of active syncs we allow at once"
-	syncBackoffDurationDesc = "The amount of time in seconds we will wait to backoff if there has been an issue"
+	probeAddrDesc                = "The address the probe endpoint binds to."
+	webhookCertPathDesc          = "The directory that contains the webhook certificate."
+	webhookCertNameDesc          = "The name of the webhook certificate file."
+	webhookCertKeyDesc           = "The name of the webhook key file."
+	metricsCertPathDesc          = "The directory that contains the metrics server certificate."
+	metricsCertNameDesc          = "The name of the metrics server certificate file."
+	metricsCertKeyDesc           = "The name of the metrics server key file."
+	enableHTTP2Desc              = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
+	runningInClusterDesc         = "Whether or not we running inside the cluster."
+	certConfigMapNameDesc        = "The name of the configmap where we store our Cert info for s3 auth."
+	authSecretNameDesc           = "The name of the secret required for s3 auth."
+	operatorNamespaceDesc        = "The namespace our operator is deployed to."
+	maxSyncRestartCountDesc      = "The maximum number of restarts we allow before we cancel a sync."
+	maxSyncConcurrencyDesc       = "The maximum number of active syncs we allow at once."
+	syncBackoffDurationDesc      = "The amount of time in seconds we will wait to backoff if there has been an issue."
+	runtimeBehaviorConfigMapDesc = "The name of the configmap we will look at for dynamic behavior if present."
 )
 
 // nolint:gocyclo
@@ -103,6 +104,7 @@ func main() {
 	var maxSyncRestartCount int
 	var maxSyncConcurrency int
 	var syncBackoffDurationSecondsCount int
+	var runtimeConfigMapName string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", metricsAddrDesc)
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", probeAddrDesc)
@@ -123,6 +125,7 @@ func main() {
 	flag.IntVar(&maxSyncRestartCount, "max-sync-restart", 2, maxSyncRestartCountDesc)
 	flag.IntVar(&maxSyncConcurrency, "max-sync-concurrency", 2, maxSyncConcurrencyDesc)
 	flag.IntVar(&syncBackoffDurationSecondsCount, "error-backoff-duration", 60, syncBackoffDurationDesc)
+	flag.StringVar(&runtimeConfigMapName, "runtime-config-name", "datasync-operator-config", runtimeBehaviorConfigMapDesc)
 
 	opts := zap.Options{
 		Development: true,
@@ -302,7 +305,7 @@ func main() {
 
 	dynamicConfigService := &dynamicconfigservice.DynamicConfigService{
 		Client:        mgr.GetClient(),
-		ConfigMapName: "Configmap-name",
+		ConfigMapName: runtimeConfigMapName,
 		DefaultConfig: defaultControllerConfig,
 	}
 
