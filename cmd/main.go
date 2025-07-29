@@ -27,8 +27,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
-	contollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
 	"pelotech/ot-sync-operator/internal/controller"
+	datasyncservice "pelotech/ot-sync-operator/internal/datasync-service"
+	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
+	errorservice "pelotech/ot-sync-operator/internal/error-service"
 	generalutils "pelotech/ot-sync-operator/internal/general-utils"
 	kubectlclient "pelotech/ot-sync-operator/internal/kubectl-client"
 	resourcemanager "pelotech/ot-sync-operator/internal/resource-manager"
@@ -66,20 +68,20 @@ const (
 	operatorConfigMapNameDesc = "This configmap contains values used in the controller logic." +
 		" It allows for configuration of behavior"
 
-	probeAddrDesc          = "The address the probe endpoint binds to."
-	webhookCertPathDesc    = "The directory that contains the webhook certificate."
-	webhookCertNameDesc    = "The name of the webhook certificate file."
-	webhookCertKeyDesc     = "The name of the webhook key file."
-	metricsCertPathDesc    = "The directory that contains the metrics server certificate."
-	metricsCertNameDesc    = "The name of the metrics server certificate file."
-	metricsCertKeyDesc     = "The name of the metrics server key file."
-	enableHTTP2Desc        = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
-	runningInClusterDesc   = "Whether or not we running inside the cluster."
-	certConfigMapNameDesc  = "The name of the configmap where we store our Cert info for s3 auth."
-	authSecretNameDesc     = "The name of the secret required for s3 auth."
+	probeAddrDesc           = "The address the probe endpoint binds to."
+	webhookCertPathDesc     = "The directory that contains the webhook certificate."
+	webhookCertNameDesc     = "The name of the webhook certificate file."
+	webhookCertKeyDesc      = "The name of the webhook key file."
+	metricsCertPathDesc     = "The directory that contains the metrics server certificate."
+	metricsCertNameDesc     = "The name of the metrics server certificate file."
+	metricsCertKeyDesc      = "The name of the metrics server key file."
+	enableHTTP2Desc         = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
+	runningInClusterDesc    = "Whether or not we running inside the cluster."
+	certConfigMapNameDesc   = "The name of the configmap where we store our Cert info for s3 auth."
+	authSecretNameDesc      = "The name of the secret required for s3 auth."
 	operatorNamespaceDesc   = "The namespace our operator is deployed to."
 	maxSyncRestartCountDesc = "The maximum number of restarts we allow before we cancel a sync"
-	maxSyncConcurrencyDesc = "The maximum number of active syncs we allow at once"
+	maxSyncConcurrencyDesc  = "The maximum number of active syncs we allow at once"
 	syncBackoffDurationDesc = "The amount of time in seconds we will wait to backoff if there has been an issue"
 )
 
@@ -276,19 +278,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	defaultControllerConfig := contollerutils.OperatorConfig{
-		Concurrency: maxSyncConcurrency,
-		RetryLimit: maxSyncRestartCount,
+	defaultControllerConfig := dynamicconfigservice.OperatorConfig{
+		Concurrency:          maxSyncConcurrency,
+		RetryLimit:           maxSyncRestartCount,
 		RetryBackoffDuration: time.Duration(syncBackoffDurationSecondsCount) * time.Second,
 	}
 
+	rm := &resourcemanager.DataSyncResourceManager{}
+
+	recorder := mgr.GetEventRecorderFor("datasync-controller")
+	errorHandler := &errorservice.ErrorHandler{
+		Client:          mgr.GetClient(),
+		Recorder:        recorder,
+		ResourceManager: rm,
+	}
+
+	dataSyncService := &datasyncservice.DataSyncService{
+		Client:          mgr.GetClient(),
+		Recorder:        recorder,
+		ResourceManager: rm,
+		ErrorHandler:    errorHandler,
+	}
+
+	dynamicConfigService := &dynamicconfigservice.DynamicConfigService{
+		Client:        mgr.GetClient(),
+		ConfigMapName: "Configmap-name",
+		DefaultConfig: defaultControllerConfig,
+	}
 
 	if err := (&controller.DataSyncReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor("datasync-controller"),
-		ResourceManager: &resourcemanager.DataSyncResourceManager{},
-		DefaultControllerConfig: defaultControllerConfig,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		Recorder:             recorder,
+		DataSyncService:      *dataSyncService,
+		DynamicConfigService: *dynamicConfigService,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DataSync")
 		os.Exit(1)
