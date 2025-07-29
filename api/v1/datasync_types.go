@@ -23,6 +23,10 @@ const (
 	DataSyncVersionLabel string = "version"
 )
 
+const (
+ SyncStartTimeAnnotation = "sync-start-time"
+)
+
 // Resources represent a resource which is used in a workspace that has some data that needs to be synced
 type Resource struct {
 	// +kubebuilder:validation:MinLength=1
