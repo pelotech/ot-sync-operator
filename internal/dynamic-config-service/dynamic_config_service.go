@@ -19,6 +19,7 @@ type OperatorConfig struct {
 	Concurrency          int
 	RetryLimit           int
 	RetryBackoffDuration time.Duration
+	MaxSyncDuration      time.Duration
 }
 
 type IDynamicConfigService interface {
@@ -76,21 +77,34 @@ func extractOperatorConfig(configMap *corev1.ConfigMap) (*OperatorConfig, error)
 		return nil, fmt.Errorf("failed to parse 'retryLimit': %w", err)
 	}
 
-	durationStr, ok := configMap.Data["retryBackoffDuration"]
+	retryBackoffDurString, ok := configMap.Data["retryBackoffDuration"]
 
 	if !ok {
 		return nil, fmt.Errorf("key 'retryBackoffDuration' not found in configmap %s", configMap.Name)
 	}
 
-	duration, err := time.ParseDuration(durationStr)
+	retryBackoffDuration, err := time.ParseDuration(retryBackoffDurString)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse 'retryBackoffDuration': %w", err)
+	}
+
+	maxSyncDurString, ok := configMap.Data["maxSyncDuration"]
+
+	if !ok {
+		return nil, fmt.Errorf("key 'maxSyncDuration' not found in configmap %s", configMap.Name)
+	}
+
+	maxSyncDuration, err := time.ParseDuration(maxSyncDurString)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse 'retryBackoffDuration': %w", err)
 	}
 
 	return &OperatorConfig{
-		RetryBackoffDuration: duration,
+		RetryBackoffDuration: retryBackoffDuration,
 		RetryLimit:           retryLimit,
 		Concurrency:          concurrency,
+		MaxSyncDuration:      maxSyncDuration,
 	}, nil
 }
