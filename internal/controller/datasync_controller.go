@@ -47,8 +47,7 @@ type DataSyncReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 
-const requeueTimeInveral = 10 * time.Second
-const operatorConfigmapName = "datasync-operator-config"
+const requeueTimeInveral = 10 * time.Second const operatorConfigmapName = "datasync-operator-config"
 
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
@@ -215,6 +214,7 @@ func (r *DataSyncReconciler) handleResourceUpdateError(ctx context.Context, ds *
 
 	return ctrl.Result{}, originalErr
 }
+
 
 func (r *DataSyncReconciler) handleResourceCreationError(ctx context.Context, ds *crdv1.DataSync, originalErr error) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
