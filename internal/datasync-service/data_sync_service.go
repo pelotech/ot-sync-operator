@@ -28,7 +28,7 @@ type IDataSyncService interface {
 		ds *crdv1.DataSync,
 		opConfig dynamicconfigservice.OperatorConfig,
 	) (ctrl.Result, error)
-	CleanupChildrenOnDeletion(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
+	DeleteResource(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
 }
 
 type DataSyncService struct {
@@ -155,7 +155,7 @@ func (s *DataSyncService) TransitonFromSyncing(
 	return ctrl.Result{}, nil
 }
 
-func (s *DataSyncService) CleanupChildrenOnDeletion(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+func (s *DataSyncService) DeleteResource(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	err := s.ResourceManager.TearDownAllResources(ctx, s.Client, ds)
@@ -163,6 +163,7 @@ func (s *DataSyncService) CleanupChildrenOnDeletion(ctx context.Context, ds *crd
 	if err != nil {
 		logger.Error(err, "failed to cleanup child resources of datasync.")
 	}
+
 
 	return ctrl.Result{}, nil
 }
