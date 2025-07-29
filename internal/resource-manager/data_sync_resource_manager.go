@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
+	"time"
 
 	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
 	resourcegen "pelotech/ot-sync-operator/internal/resource-generator"
@@ -131,13 +132,33 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 
 // Check if our resources have errors that would require us to
 // scuttle the sync.
-// TODO: Add a timeout case for syncs that get stuck
 func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	ctx context.Context,
 	k8sClient client.Client,
 	config dynamicconfigservice.OperatorConfig,
 	ds *crdv1.DataSync,
 ) error {
+	// Check if our datasync has been syncing for too long
+	now := time.Now()
+
+	syncStartTimeStr, exists := ds.Annotations[crdv1.SyncStartTimeAnnotation]
+
+	if !exists {
+		return fmt.Errorf("the datasync %s does not have a recorded sync start time.", ds.Name)
+	}
+
+	syncStartTime, err := time.Parse(time.RFC3339, syncStartTimeStr)
+
+	if err != nil {
+		return fmt.Errorf("the datasync %s does not have a parseable sync start time.", ds.Name)
+	}
+
+	timeSyncing := now.Sub(syncStartTime)
+
+	if timeSyncing > config.MaxSyncDuration {
+		return fmt.Errorf("the datasync %s has been syncing longer than the allowed sync time.", ds.Name)
+	}
+
 	searchLabels := getLabelsToMatch(ds)
 
 	listOps := []client.ListOption{
