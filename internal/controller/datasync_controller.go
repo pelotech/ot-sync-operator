@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,12 +48,15 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	logger := logf.FromContext(ctx)
 
 	var dataSync crdv1.DataSync
-	if err := r.Get(ctx, req.NamespacedName, &dataSync); err != nil {
-		if errors.IsNotFound(err) {
-			// TODO: If we have deleted the resource we need to tear down all their child resources.
-			logger.Info("DataSync resource not found. Ignoring since object must be deleted.")
-			return ctrl.Result{}, nil
-		}
+
+	err := r.Get(ctx, req.NamespacedName, &dataSync)
+
+	if err != nil && errors.IsNotFound(err) {
+		logger.Info("DataSync resource deleted cleaning up child resources.")
+		return r.DataSyncService.CleanupChildrenOnDeletion(ctx, &dataSync)
+	}
+
+	if err != nil {
 		logger.Error(err, "Failed to get DataSync")
 		return ctrl.Result{}, err
 	}
