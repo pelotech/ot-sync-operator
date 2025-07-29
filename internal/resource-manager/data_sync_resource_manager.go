@@ -131,6 +131,7 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 
 // Check if our resources have errors that would require us to
 // scuttle the sync.
+// TODO: Add a timeout case for syncs that get stuck
 func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	ctx context.Context,
 	k8sClient client.Client,
