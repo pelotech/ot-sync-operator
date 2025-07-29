@@ -14,6 +14,7 @@ import (
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	crutils "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type DataSyncResourceManager struct {
@@ -94,6 +95,14 @@ func (dvrm *DataSyncResourceManager) TearDownAllResources(
 		return err
 	}
 
+	// If we have a finalizer remove it.
+	if crutils.ContainsFinalizer(ds, crdv1.DataSyncFinalizer) {
+		crutils.RemoveFinalizer(ds, crdv1.DataSyncFinalizer)
+		if err := k8sClient.Update(ctx, ds); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -126,6 +135,8 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 			break
 		}
 	}
+
+
 
 	return dataVolumesReady, nil
 }
