@@ -28,6 +28,7 @@ type IDataSyncService interface {
 		ds *crdv1.DataSync,
 		opConfig dynamicconfigservice.OperatorConfig,
 	) (ctrl.Result, error)
+	CleanupChildrenOnDeletion(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
 }
 
 type DataSyncService struct {
@@ -94,6 +95,16 @@ func (s *DataSyncService) AttemptSyncingOfResource(
 		return s.ErrorHandler.HandleResourceUpdateError(ctx, ds, err, "Failed to update status to Syncing")
 	}
 
+	orginalDs := ds.DeepCopy()
+
+	now := time.Now().Format(time.RFC3339)
+
+	ds.Annotations[crdv1.SyncStartTimeAnnotation] = now
+
+	if err := s.Client.Patch(ctx, ds, client.MergeFrom(orginalDs)); err != nil {
+		return s.ErrorHandler.HandleResourceUpdateError(ctx, ds, err, "Failed to update sync start time")
+	}
+
 	s.Recorder.Eventf(ds, "Normal", "SyncStarted", "Resource sync has started")
 
 	return ctrl.Result{}, nil
@@ -140,6 +151,18 @@ func (s *DataSyncService) TransitonFromSyncing(
 	}
 
 	s.Recorder.Eventf(ds, "Normal", "SyncCompleted", "Resource sync completed successfully")
+
+	return ctrl.Result{}, nil
+}
+
+func (s *DataSyncService) CleanupChildrenOnDeletion(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
+	logger := logf.FromContext(ctx)
+
+	err := s.ResourceManager.TearDownAllResources(ctx, s.Client, ds)
+
+	if err != nil {
+		logger.Error(err, "Failed to cleanup child resources of Datasync %s on deletion", ds.Name)
+	}
 
 	return ctrl.Result{}, nil
 }
