@@ -11,9 +11,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
-	controllerutil "pelotech/ot-sync-operator/internal/contoller-utils"
+	dscontrollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
 	datasyncservice "pelotech/ot-sync-operator/internal/datasync-service"
 	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
+	crutils "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // DataSyncReconciler reconciles a DataSync object
@@ -44,6 +45,7 @@ type DataSyncReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 
+
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
@@ -52,13 +54,30 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	err := r.Get(ctx, req.NamespacedName, &dataSync)
 
 	if err != nil && errors.IsNotFound(err) {
-		logger.Info("DataSync resource deleted cleaning up child resources.")
-		return r.DataSyncService.CleanupChildrenOnDeletion(ctx, &dataSync)
+		logger.Info("Resource has been deleted.")
+		return ctrl.Result{}, nil
 	}
 
 	if err != nil {
 		logger.Error(err, "Failed to get DataSync")
 		return ctrl.Result{}, err
+	}
+
+	// We don't have our finalizer and haven't been deleted
+	if dataSync.GetDeletionTimestamp().IsZero() && !crutils.ContainsFinalizer(&dataSync, crdv1.DataSyncFinalizer) {
+		crutils.AddFinalizer(&dataSync, crdv1.DataSyncFinalizer)
+
+		err := r.Update(ctx, &dataSync)
+
+		if err != nil {
+			return r.ErrorHandler.HandleResourceUpdateError(ctx, &dataSync, err, "Failed to add finalizer to our resource")
+		}
+
+	}
+
+	// We have been deleted
+	if !dataSync.GetDeletionTimestamp().IsZero() && crutils.ContainsFinalizer(&dataSync, crdv1.DataSyncFinalizer) {
+		return r.DataSyncService.DeleteResource(ctx, &dataSync)
 	}
 
 	controllerConfig := r.DynamicConfigService.GetOperatorConfig(ctx, dataSync)
@@ -85,7 +104,7 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 func (r *DataSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// Index resources by phase since we have to query these quite a bit
-	err := mgr.GetFieldIndexer().IndexField(context.Background(), &crdv1.DataSync{}, ".status.phase", controllerutil.IndexDataSyncByPhase)
+	err := mgr.GetFieldIndexer().IndexField(context.Background(), &crdv1.DataSync{}, ".status.phase", dscontrollerutils.IndexDataSyncByPhase)
 
 	if err != nil {
 		return err
