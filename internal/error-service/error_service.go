@@ -93,7 +93,7 @@ func (e *ErrorHandler) HandleSyncError(ctx context.Context, ds *crdv1.DataSync, 
 		return ctrl.Result{RequeueAfter: retryBackoff}, nil
 	}
 
-	e.Recorder.Eventf(ds, "Error", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %d", retryLimit)
+	e.Recorder.Eventf(ds, "Warning", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %d", retryLimit)
 
 	ds.Status.Phase = crdv1.DataSyncPhaseFailed
 	ds.Status.Message = "An error occurred durng reconciliation: " + originalErr.Error()
