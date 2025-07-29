@@ -45,15 +45,13 @@ type DataSyncReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 
-const requeueTimeInveral = 10 * time.Second
-const operatorConfigmapName = "datasync-operator-config"
-
 func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	var dataSync crdv1.DataSync
 	if err := r.Get(ctx, req.NamespacedName, &dataSync); err != nil {
 		if errors.IsNotFound(err) {
+			// TODO: If we have deleted the resource we need to tear down all their child resources.
 			logger.Info("DataSync resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
 		}
