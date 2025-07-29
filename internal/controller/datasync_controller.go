@@ -75,8 +75,8 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	}
 
-	// We have been deleted
-	if !dataSync.GetDeletionTimestamp().IsZero() && crutils.ContainsFinalizer(&dataSync, crdv1.DataSyncFinalizer) {
+	// We have been deleted with our finalizer
+	if !dataSync.GetDeletionTimestamp().IsZero() {
 		return r.DataSyncService.DeleteResource(ctx, &dataSync)
 	}
 
