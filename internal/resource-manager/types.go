@@ -3,7 +3,8 @@ package resourcemanager
 import (
 	"context"
 
-	contollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
+	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -14,7 +15,7 @@ type ResourceManager[T any] interface {
 	ResourcesHaveErrors(
 		ctx context.Context,
 		k8sClient client.Client,
-		config contollerutils.OperatorConfig,
+		config dynamicconfigservice.OperatorConfig,
 		resource *T,
 	) error
 }

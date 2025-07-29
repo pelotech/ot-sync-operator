@@ -5,7 +5,7 @@ import (
 	"fmt"
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 
-	contollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
+	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
 	resourcegen "pelotech/ot-sync-operator/internal/resource-generator"
 
 	corev1 "k8s.io/api/core/v1"
@@ -134,7 +134,7 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	ctx context.Context,
 	k8sClient client.Client,
-	config    contollerutils.OperatorConfig,
+	config dynamicconfigservice.OperatorConfig,
 	ds *crdv1.DataSync,
 ) error {
 	searchLabels := getLabelsToMatch(ds)
