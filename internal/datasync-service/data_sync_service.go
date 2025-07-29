@@ -161,7 +161,7 @@ func (s *DataSyncService) CleanupChildrenOnDeletion(ctx context.Context, ds *crd
 	err := s.ResourceManager.TearDownAllResources(ctx, s.Client, ds)
 
 	if err != nil {
-		logger.Error(err, "Failed to cleanup child resources of Datasync %s on deletion", ds.Name)
+		logger.Error(err, "failed to cleanup child resources of datasync.")
 	}
 
 	return ctrl.Result{}, nil
