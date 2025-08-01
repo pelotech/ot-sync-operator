@@ -13,7 +13,6 @@ import (
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	controllerutil "pelotech/ot-sync-operator/internal/contoller-utils"
-	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
 	errorservice "pelotech/ot-sync-operator/internal/error-service"
 	resourcemanager "pelotech/ot-sync-operator/internal/resource-manager"
 )
@@ -22,12 +21,8 @@ const requeueTimeInveral = 10 * time.Second
 
 type IDataSyncService interface {
 	QueueResourceCreation(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
-	AttemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync, syncLimit int) (ctrl.Result, error)
-	TransitonFromSyncing(
-		ctx context.Context,
-		ds *crdv1.DataSync,
-		opConfig dynamicconfigservice.OperatorConfig,
-	) (ctrl.Result, error)
+	AttemptSyncingOfResource(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
+	TransitonFromSyncing(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
 	DeleteResource(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error)
 }
 
@@ -36,6 +31,7 @@ type DataSyncService struct {
 	Recorder        record.EventRecorder
 	ResourceManager resourcemanager.ResourceManager[crdv1.DataSync]
 	ErrorHandler    errorservice.ErrorHandlerService
+	SyncLimit       int
 }
 
 func (s *DataSyncService) QueueResourceCreation(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
@@ -59,7 +55,6 @@ func (s *DataSyncService) QueueResourceCreation(ctx context.Context, ds *crdv1.D
 func (s *DataSyncService) AttemptSyncingOfResource(
 	ctx context.Context,
 	ds *crdv1.DataSync,
-	syncLimit int,
 ) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
@@ -70,8 +65,8 @@ func (s *DataSyncService) AttemptSyncingOfResource(
 		return ctrl.Result{}, err
 	}
 
-	if len(syncingList.Items) >= syncLimit {
-		s.Recorder.Eventf(ds, "Normal", "WaitingToSync", "No more than %d DataSyncs can be syncing at once. Waiting...", syncLimit)
+	if len(syncingList.Items) >= s.SyncLimit {
+		s.Recorder.Eventf(ds, "Normal", "WaitingToSync", "No more than %d DataSyncs can be syncing at once. Waiting...", s.SyncLimit)
 		return ctrl.Result{RequeueAfter: requeueTimeInveral}, nil
 	}
 
@@ -110,19 +105,15 @@ func (s *DataSyncService) AttemptSyncingOfResource(
 	return ctrl.Result{}, nil
 }
 
-func (s *DataSyncService) TransitonFromSyncing(
-	ctx context.Context,
-	ds *crdv1.DataSync,
-	opConfig dynamicconfigservice.OperatorConfig,
-) (ctrl.Result, error) {
+func (s *DataSyncService) TransitonFromSyncing(ctx context.Context, ds *crdv1.DataSync) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	// Check if there is an error occurring in the sync
-	syncError := s.ResourceManager.ResourcesHaveErrors(ctx, s.Client, opConfig, ds)
+	syncError := s.ResourceManager.ResourcesHaveErrors(ctx, s.Client, ds)
 
 	if syncError != nil {
 		logger.Error(syncError, "A sync error has occurred.")
-		return s.ErrorHandler.HandleSyncError(ctx, ds, syncError, "A error has occurred while syncing", opConfig.RetryLimit, opConfig.RetryBackoffDuration)
+		return s.ErrorHandler.HandleSyncError(ctx, ds, syncError, "A error has occurred while syncing")
 	}
 
 	// Check if the sync is done is not done

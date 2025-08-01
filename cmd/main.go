@@ -1,13 +1,10 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -19,7 +16,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -31,8 +27,6 @@ import (
 	datasyncservice "pelotech/ot-sync-operator/internal/datasync-service"
 	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
 	errorservice "pelotech/ot-sync-operator/internal/error-service"
-	generalutils "pelotech/ot-sync-operator/internal/general-utils"
-	kubectlclient "pelotech/ot-sync-operator/internal/kubectl-client"
 	resourcemanager "pelotech/ot-sync-operator/internal/resource-manager"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -256,62 +250,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Standup our client we will use to deploy resources inside the controller
+	dsControllerConfig := dynamicconfigservice.GetDSControllerConfig(setupLog)
 
-	// Check for S3 secrets and config map to allow for pulling from either s3 or a registry
-	// We also do this in an init container on the pod when deployed.
-	kubeConfig, err := kubectlclient.LoadKubectlConfig(runningInCluster)
-
-	if err != nil {
-		setupLog.Error(err, "unable to load kubeconfig file")
+	rm := &resourcemanager.DataSyncResourceManager{
+		MaxSyncDuration: dsControllerConfig.MaxSyncDuration,
+		RetryLimit:      dsControllerConfig.RetryLimit,
 	}
-
-	tmpClient, err := client.New(kubeConfig, client.Options{})
-
-	_, err = generalutils.GetSecret(context.Background(), tmpClient, authSecretName, operatorNamespace)
-
-	if err != nil {
-		errMsg := fmt.Sprintf("secret by the name of %s in namespace %s not found", authSecretName, operatorNamespace)
-		setupLog.Error(err, errMsg)
-		os.Exit(1)
-	}
-
-	_, err = generalutils.GetConfigMap(context.Background(), tmpClient, certConfigMapName, operatorNamespace)
-
-	if err != nil {
-		errMsg := fmt.Sprintf("configmap by name of %s in namespace %s not found", authSecretName, operatorNamespace)
-		setupLog.Error(err, errMsg)
-		os.Exit(1)
-	}
-
-	syncBackoffDuration, err := time.ParseDuration(syncBackoffDurationStr)
-
-	if err != nil {
-		setupLog.Error(err, "the provided sync backoff duration is not valid.")
-		os.Exit(1)
-	}
-
-	maxSyncDuration, err := time.ParseDuration(maxSyncDurationStr)
-
-	if err != nil {
-		setupLog.Error(err, "the provided max sync duration is not valid.")
-		os.Exit(1)
-	}
-
-	defaultControllerConfig := dynamicconfigservice.OperatorConfig{
-		Concurrency:          maxSyncConcurrency,
-		RetryLimit:           maxSyncRestartCount,
-		RetryBackoffDuration: syncBackoffDuration,
-		MaxSyncDuration:      maxSyncDuration,
-	}
-
-	rm := &resourcemanager.DataSyncResourceManager{}
 
 	recorder := mgr.GetEventRecorderFor("datasync-controller")
 	errorHandler := &errorservice.ErrorHandler{
 		Client:          mgr.GetClient(),
 		Recorder:        recorder,
 		ResourceManager: rm,
+		RetryLimit:      dsControllerConfig.RetryLimit,
+		RetryBackoff:    dsControllerConfig.RetryBackoffDuration,
 	}
 
 	dataSyncService := &datasyncservice.DataSyncService{
@@ -319,20 +271,14 @@ func main() {
 		Recorder:        recorder,
 		ResourceManager: rm,
 		ErrorHandler:    errorHandler,
-	}
-
-	dynamicConfigService := &dynamicconfigservice.DynamicConfigService{
-		Client:        mgr.GetClient(),
-		ConfigMapName: runtimeConfigMapName,
-		DefaultConfig: defaultControllerConfig,
+		SyncLimit:       dsControllerConfig.Concurrency,
 	}
 
 	if err := (&controller.DataSyncReconciler{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		Recorder:             recorder,
-		DataSyncService:      *dataSyncService,
-		DynamicConfigService: *dynamicConfigService,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        recorder,
+		DataSyncService: *dataSyncService,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DataSync")
 		os.Exit(1)

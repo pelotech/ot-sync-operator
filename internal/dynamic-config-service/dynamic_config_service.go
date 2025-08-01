@@ -1,110 +1,82 @@
 package dynamicconfigservice
 
 import (
-	"context"
 	"fmt"
-	crdv1 "pelotech/ot-sync-operator/api/v1"
-	generalutils "pelotech/ot-sync-operator/internal/general-utils"
+	"github.com/go-logr/logr"
+	"github.com/joho/godotenv"
+	"os"
 	"strconv"
 	"time"
-
-	corev1 "k8s.io/api/core/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type OperatorConfig struct {
+type DataSyncControllerConfig struct {
 	Concurrency          int
 	RetryLimit           int
 	RetryBackoffDuration time.Duration
 	MaxSyncDuration      time.Duration
 }
 
-type IDynamicConfigService interface {
-	GetOperatorConfig(ctx context.Context, req ctrl.Request) OperatorConfig
-}
+const (
+	defaultConcurrency     = 10
+	defaultRetryLimit      = 2
+	defaultBackoffDuration = "10s"
+	defaultMaxSyncDuration = "1h"
+)
 
-type DynamicConfigService struct {
-	client.Client
-	ConfigMapName string
-	DefaultConfig OperatorConfig
-}
+func GetDSControllerConfig(log logr.Logger) DataSyncControllerConfig {
+	// Load a .env file to get these values if one exists
+	godotenv.Load()
 
-func (dcs *DynamicConfigService) GetOperatorConfig(ctx context.Context, ds crdv1.DataSync) OperatorConfig {
-	logger := logf.FromContext(ctx)
-
-	operatorConfigmap, err := generalutils.GetConfigMap(ctx, dcs.Client, dcs.ConfigMapName, ds.Namespace)
+	concurrency, err := getEnvAsInt("CONCURRENCY", defaultConcurrency)
 	if err != nil {
-		logger.Info("No configmap containing operator config found")
-		return dcs.DefaultConfig
+		msg := fmt.Sprintf("Invalid value for CONCURRENCY, using default: %d. Error: %v", defaultConcurrency, err)
+		log.Info(msg)
 	}
 
-	config, err := extractOperatorConfig(operatorConfigmap)
-
+	retryLimit, err := getEnvAsInt("RETRY_LIMIT", defaultRetryLimit)
 	if err != nil {
-		logger.Error(err, "Failed to parse dynamic config from the configmap %s", dcs.ConfigMapName)
-		return dcs.DefaultConfig
+		msg := fmt.Sprintf("Invalid value for RETRY_LIMIT, using default: %d. Error: %v", defaultRetryLimit, err)
+		log.Info(msg)
 	}
 
-	return *config
-}
-
-func extractOperatorConfig(configMap *corev1.ConfigMap) (*OperatorConfig, error) {
-	var ok bool
-
-	concurrencyStr, ok := configMap.Data["concurrency"]
-	if !ok {
-		return nil, fmt.Errorf("key 'concurrency' not found in configmap %s", configMap.Name)
-	}
-
-	concurrency, err := strconv.Atoi(concurrencyStr)
-
+	retryBackoffDuration, err := getEnvAsDuration("RETRY_BACKOFF_DURATION", defaultBackoffDuration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse 'concurrency': %w", err)
+		msg := fmt.Sprintf("Invalid value for RETRY_BACKOFF_DURATION, using default: %s. Error: %v", defaultBackoffDuration, err)
+		log.Info(msg)
 	}
 
-	retryLimitStr, ok := configMap.Data["retryLimit"]
-
-	if !ok {
-		return nil, fmt.Errorf("key 'retryLimit' not found in configmap %s", configMap.Name)
-	}
-
-	retryLimit, err := strconv.Atoi(retryLimitStr)
-
+	maxSyncDuration, err := getEnvAsDuration("MAX_SYNC_DURATION", defaultMaxSyncDuration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse 'retryLimit': %w", err)
+		msg := fmt.Sprintf("Invalid value for MAX_SYNC_DURATION, using default: %s. Error: %v", defaultMaxSyncDuration, err)
+		log.Info(msg)
 	}
 
-	retryBackoffDurString, ok := configMap.Data["retryBackoffDuration"]
-
-	if !ok {
-		return nil, fmt.Errorf("key 'retryBackoffDuration' not found in configmap %s", configMap.Name)
-	}
-
-	retryBackoffDuration, err := time.ParseDuration(retryBackoffDurString)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse 'retryBackoffDuration': %w", err)
-	}
-
-	maxSyncDurString, ok := configMap.Data["maxSyncDuration"]
-
-	if !ok {
-		return nil, fmt.Errorf("key 'maxSyncDuration' not found in configmap %s", configMap.Name)
-	}
-
-	maxSyncDuration, err := time.ParseDuration(maxSyncDurString)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse 'retryBackoffDuration': %w", err)
-	}
-
-	return &OperatorConfig{
-		RetryBackoffDuration: retryBackoffDuration,
-		RetryLimit:           retryLimit,
+	return DataSyncControllerConfig{
 		Concurrency:          concurrency,
+		RetryLimit:           retryLimit,
+		RetryBackoffDuration: retryBackoffDuration,
 		MaxSyncDuration:      maxSyncDuration,
-	}, nil
+	}
+}
+
+func getEnvAsInt(name string, fallback int) (int, error) {
+	if valueStr, ok := os.LookupEnv(name); ok {
+		value, err := strconv.Atoi(valueStr)
+		if err != nil {
+			return fallback, err
+		}
+		return value, nil
+	}
+	return fallback, nil
+}
+
+func getEnvAsDuration(name string, fallback string) (time.Duration, error) {
+	if valueStr, ok := os.LookupEnv(name); ok {
+		value, err := time.ParseDuration(valueStr)
+		if err != nil {
+			return time.ParseDuration(fallback)
+		}
+		return value, nil
+	}
+	return time.ParseDuration(fallback)
 }

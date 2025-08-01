@@ -18,13 +18,15 @@ import (
 type ErrorHandlerService interface {
 	HandleResourceUpdateError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error)
 	HandleResourceCreationError(ctx context.Context, ds *crdv1.DataSync, originalErr error) (ctrl.Result, error)
-	HandleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string, retryLimit int, retryBackoff time.Duration) (ctrl.Result, error)
+	HandleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error)
 }
 
 type ErrorHandler struct {
 	Client          client.Client
 	Recorder        record.EventRecorder
 	ResourceManager resourcemanager.ResourceManager[crdv1.DataSync]
+	RetryLimit      int
+	RetryBackoff    time.Duration
 }
 
 func (e *ErrorHandler) HandleResourceUpdateError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
@@ -77,7 +79,7 @@ func (e *ErrorHandler) HandleResourceCreationError(ctx context.Context, ds *crdv
 	return ctrl.Result{}, originalErr
 }
 
-func (e *ErrorHandler) HandleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string, retryLimit int, retryBackoff time.Duration) (ctrl.Result, error) {
+func (e *ErrorHandler) HandleSyncError(ctx context.Context, ds *crdv1.DataSync, originalErr error, message string) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 	logger.Error(originalErr, message)
 
@@ -89,11 +91,11 @@ func (e *ErrorHandler) HandleSyncError(ctx context.Context, ds *crdv1.DataSync, 
 		logger.Error(err, "Failed to update resource failure count")
 	}
 
-	if ds.Status.FailureCount < retryLimit {
-		return ctrl.Result{RequeueAfter: retryBackoff}, nil
+	if ds.Status.FailureCount < e.RetryLimit {
+		return ctrl.Result{RequeueAfter: e.RetryBackoff}, nil
 	}
 
-	e.Recorder.Eventf(ds, "Warning", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %d", retryLimit)
+	e.Recorder.Eventf(ds, "Warning", "SyncExceededRetryCount", "The sync has failed beyond the set retry limit of %d", e.RetryLimit)
 
 	ds.Status.Phase = crdv1.DataSyncPhaseFailed
 	ds.Status.Message = "An error occurred durng reconciliation: " + originalErr.Error()

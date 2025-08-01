@@ -6,7 +6,6 @@ import (
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	"time"
 
-	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
 	resourcegen "pelotech/ot-sync-operator/internal/resource-generator"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +17,8 @@ import (
 )
 
 type DataSyncResourceManager struct {
+	MaxSyncDuration time.Duration
+	RetryLimit      int
 }
 
 const dataVolumeDonePhase = "Succeeded"
@@ -143,7 +144,6 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	ctx context.Context,
 	k8sClient client.Client,
-	config dynamicconfigservice.OperatorConfig,
 	ds *crdv1.DataSync,
 ) error {
 	// Check if our datasync has been syncing for too long
@@ -163,7 +163,7 @@ func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 
 	timeSyncing := now.Sub(syncStartTime)
 
-	if timeSyncing > config.MaxSyncDuration {
+	if timeSyncing > dsrm.MaxSyncDuration {
 		return fmt.Errorf("the datasync %s has been syncing longer than the allowed sync time.", ds.Name)
 	}
 
@@ -180,7 +180,7 @@ func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 	}
 
 	for _, dv := range dataVolumeList.Items {
-		if dv.Status.RestartCount >= int32(config.RetryLimit) {
+		if dv.Status.RestartCount >= int32(dsrm.RetryLimit) {
 			return fmt.Errorf("a datavolume has restarted more than the max for a sync.")
 		}
 	}

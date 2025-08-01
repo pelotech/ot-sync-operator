@@ -13,7 +13,6 @@ import (
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 	dscontrollerutils "pelotech/ot-sync-operator/internal/contoller-utils"
 	datasyncservice "pelotech/ot-sync-operator/internal/datasync-service"
-	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
 	crutils "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -23,7 +22,6 @@ type DataSyncReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 	datasyncservice.DataSyncService
-	dynamicconfigservice.DynamicConfigService
 }
 
 // RBAC for our CRD
@@ -79,8 +77,6 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return r.DataSyncService.DeleteResource(ctx, &dataSync)
 	}
 
-	controllerConfig := r.DynamicConfigService.GetOperatorConfig(ctx, dataSync)
-
 	currentPhase := dataSync.Status.Phase
 	logger.Info("Reconciling DataSync", "Phase", currentPhase, "Name", dataSync.Name)
 
@@ -88,9 +84,9 @@ func (r *DataSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	case "":
 		return r.DataSyncService.QueueResourceCreation(ctx, &dataSync)
 	case crdv1.DataSyncPhaseQueued:
-		return r.DataSyncService.AttemptSyncingOfResource(ctx, &dataSync, controllerConfig.Concurrency)
+		return r.DataSyncService.AttemptSyncingOfResource(ctx, &dataSync)
 	case crdv1.DataSyncPhaseSyncing:
-		return r.DataSyncService.TransitonFromSyncing(ctx, &dataSync, controllerConfig)
+		return r.DataSyncService.TransitonFromSyncing(ctx, &dataSync)
 	case crdv1.DataSyncPhaseCompleted, crdv1.DataSyncPhaseFailed:
 		return ctrl.Result{}, nil
 	default:
