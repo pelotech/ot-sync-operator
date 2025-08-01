@@ -20,12 +20,12 @@ const (
 
 // Datasync Labels
 const (
-	DataSyncOwnerLabel   string = "owner"
+	DataSyncOwnerLabel string = "owner"
 )
 
 // Datasync Annotations
 const (
- SyncStartTimeAnnotation = "sync-start-time"
+	SyncStartTimeAnnotation = "sync-start-time"
 )
 
 const DataSyncFinalizer = "pelotech.ot/data-sync-finalizer"
@@ -77,7 +77,7 @@ type DataSyncStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=datasyncs,scope=Namespaced,shortName=ds,singular=datasync
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="The current phase of the DataSync."
-// +kubebuilder:printcolumn:name="Resource Name",type="string",JSONPath=".spec.name",description="The ID of the workspace being synced."
+// +kubebuilder:printcolumn:name="Resource Name",type="string",JSONPath=".spec.name",description="The name of the resource we are syncing."
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DataSync is the Schema for the datasyncs API.

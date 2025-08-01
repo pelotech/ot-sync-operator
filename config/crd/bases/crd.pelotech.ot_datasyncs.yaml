@@ -21,13 +21,9 @@ spec:
       jsonPath: .status.phase
       name: Phase
       type: string
-    - description: The ID of the workspace being synced.
-      jsonPath: .spec.workspaceId
-      name: WorkspaceID
-      type: string
-    - description: The version of the workspace we are syncing.
-      jsonPath: .spec.version
-      name: Version
+    - description: The name of the resource we are syncing.
+      jsonPath: .spec.name
+      name: Resource Name
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -57,59 +53,36 @@ spec:
           spec:
             description: DataSyncSpec defines the desired state of DataSync.
             properties:
-              askForDiskSpace:
-                type: boolean
               certConfigMap:
                 type: string
-              resources:
-                description: resources is a list of workspace resources that have
-                  data that needs to be synced.
-                items:
-                  description: Resources represent a resource which is used in a workspace
-                    that has some data that needs to be synced
-                  properties:
-                    diskSize:
-                      description: DiskSize specifies the size of the disk, e.g.,
-                        "10Gi", "500Mi".
-                      pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$
-                      type: string
-                    name:
-                      minLength: 1
-                      type: string
-                    sourceType:
-                      enum:
-                      - s3
-                      - registry
-                      type: string
-                    url:
-                      minLength: 1
-                      type: string
-                  required:
-                  - diskSize
-                  - name
-                  - sourceType
-                  - url
-                  type: object
-                minItems: 0
-                type: array
+              diskSize:
+                description: DiskSize specifies the size of the disk, e.g., "10Gi",
+                  "500Mi".
+                pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$
+                type: string
+              name:
+                minLength: 1
+                type: string
               secretRef:
                 type: string
               snapshotClass:
                 type: string
+              sourceType:
+                enum:
+                - s3
+                - registry
+                type: string
               storageClass:
                 type: string
-              version:
-                type: string
-              workspaceId:
-                description: The unique identifier for the workspace to be synced.
+              url:
                 minLength: 1
                 type: string
             required:
-            - askForDiskSpace
-            - resources
+            - diskSize
+            - name
             - secretRef
-            - version
-            - workspaceId
+            - sourceType
+            - url
             type: object
           status:
             description: DataSyncStatus defines the observed state of DataSync.
