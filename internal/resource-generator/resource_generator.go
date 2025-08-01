@@ -2,10 +2,6 @@ package resourcegenerator
 
 import (
 	"errors"
-	"fmt"
-	"math"
-	"regexp"
-	"strconv"
 
 	crdv1 "pelotech/ot-sync-operator/api/v1"
 
@@ -18,12 +14,11 @@ import (
 )
 
 func CreateStorageManifestsForDataSyncResource(
-	r crdv1.Resource,
 	ds *crdv1.DataSync,
 ) (*snapshotv1.VolumeSnapshot, *cdiv1beta1.DataVolume, error) {
-	volumeSnapshot := createVolumeSnapshot(r, ds)
+	volumeSnapshot := createVolumeSnapshot(ds)
 
-	dataVolume, err := createDataVolume(r, ds)
+	dataVolume, err := createDataVolume(ds)
 
 	if err != nil {
 		return nil, nil, err
@@ -32,13 +27,7 @@ func CreateStorageManifestsForDataSyncResource(
 	return volumeSnapshot, dataVolume, nil
 }
 
-func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVolume, error) {
-	diskSize, err := CalculateDiskSize(r.DiskSize, ds.Spec.AskForDiskSpace)
-
-	if err != nil {
-		return nil, err
-	}
-
+func createDataVolume(ds *crdv1.DataSync) (*cdiv1beta1.DataVolume, error) {
 	blockOwnerDeletion := true
 	ownerReferences := []metav1.OwnerReference{
 		{
@@ -50,19 +39,18 @@ func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVol
 		},
 	}
 
-	resourceName := createResourceName(r, ds)
 
 	meta := metav1.ObjectMeta{
-		Name:            resourceName,
+		Name:            ds.Spec.Name,
 		Namespace:       ds.Namespace,
-		Labels:          withOperatorLabels(ds.Labels, ds.Name, ds.Spec.Version),
+		Labels:          withOperatorLabels(ds.Labels, ds.Name),
 		OwnerReferences: ownerReferences,
 		Annotations: map[string]string{
 			"cdi.kubevirt.io/storage.bind.immediate.requested": "true",
 		},
 	}
 
-	diskSizeResource, err := resource.ParseQuantity(diskSize)
+	diskSizeResource, err := resource.ParseQuantity(ds.Spec.DiskSize)
 
 	if err != nil {
 		return nil, err
@@ -83,10 +71,10 @@ func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVol
 
 	var source *cdiv1beta1.DataVolumeSource
 
-	if r.SourceType == "s3" {
+	if ds.Spec.SourceType == "s3" {
 		source = &cdiv1beta1.DataVolumeSource{
 			S3: &cdiv1beta1.DataVolumeSourceS3{
-				URL:       r.URL,
+				URL:       ds.Spec.URL,
 				SecretRef: ds.Spec.SecretRef,
 			},
 		}
@@ -97,7 +85,7 @@ func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVol
 		}
 		source = &cdiv1beta1.DataVolumeSource{
 			Registry: &cdiv1beta1.DataVolumeSourceRegistry{
-				URL:           &r.URL,
+				URL:           &ds.Spec.URL,
 				CertConfigMap: ds.Spec.CertConfigMap,
 				SecretRef:     &ds.Spec.SecretRef,
 			},
@@ -121,7 +109,7 @@ func createDataVolume(r crdv1.Resource, ds *crdv1.DataSync) (*cdiv1beta1.DataVol
 	return dv, nil
 }
 
-func createVolumeSnapshot(r crdv1.Resource, ds *crdv1.DataSync) *snapshotv1.VolumeSnapshot {
+func createVolumeSnapshot(ds *crdv1.DataSync) *snapshotv1.VolumeSnapshot {
 	blockOwnerDeletion := true
 	ownerReferences := []metav1.OwnerReference{
 		{
@@ -133,18 +121,17 @@ func createVolumeSnapshot(r crdv1.Resource, ds *crdv1.DataSync) *snapshotv1.Volu
 		},
 	}
 
-	resourceName := createResourceName(r, ds)
 
 	meta := metav1.ObjectMeta{
-		Name:            resourceName,
+		Name:            ds.Spec.Name,
 		Namespace:       ds.Namespace,
-		Labels:          withOperatorLabels(ds.Labels, ds.Name, ds.Spec.Version),
+		Labels:          withOperatorLabels(ds.Labels, ds.Name),
 		OwnerReferences: ownerReferences,
 	}
 
 	spec := snapshotv1.VolumeSnapshotSpec{
 		Source: snapshotv1.VolumeSnapshotSource{
-			PersistentVolumeClaimName: &resourceName,
+			PersistentVolumeClaimName: &ds.Spec.Name,
 		},
 	}
 
@@ -162,36 +149,8 @@ func createVolumeSnapshot(r crdv1.Resource, ds *crdv1.DataSync) *snapshotv1.Volu
 	}
 }
 
-func CalculateDiskSize(diskSize string, addDiskSize bool) (string, error) {
-	re := regexp.MustCompile(`([0-9.]+)([a-zA-Z]+)`)
-
-	matches := re.FindStringSubmatch(diskSize)
-
-	if len(matches) != 3 {
-		return "", fmt.Errorf("invalid disk size format: %s", diskSize)
-	}
-
-	if !addDiskSize {
-		return diskSize, nil
-	}
-
-	numPart, err := strconv.ParseFloat(matches[1], 64)
-	if err != nil {
-		return "", err
-	}
-	unitPart := matches[2]
-
-	augmentedNum := math.Ceil(numPart * 1.33)
-	return fmt.Sprintf("%d%s", int(augmentedNum), unitPart), nil
-}
-
-func withOperatorLabels(labels map[string]string, ownerName, version string) map[string]string {
+func withOperatorLabels(labels map[string]string, ownerName string) map[string]string {
 	labels[crdv1.DataSyncOwnerLabel] = ownerName
-	labels[crdv1.DataSyncVersionLabel] = version
 
 	return labels
-}
-
-func createResourceName(r crdv1.Resource, ds *crdv1.DataSync) string {
-	return fmt.Sprintf("%s-%s-%s", ds.Spec.WorkspaceID, ds.Spec.Version, r.Name)
 }

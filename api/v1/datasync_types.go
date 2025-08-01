@@ -18,21 +18,26 @@ const (
 	DataSyncPhaseFailed    string = "Failed"
 )
 
+// Datasync Labels
 const (
 	DataSyncOwnerLabel   string = "owner"
-	DataSyncVersionLabel string = "version"
 )
 
+// Datasync Annotations
 const (
  SyncStartTimeAnnotation = "sync-start-time"
 )
 
-const DataSyncFinalizer = "pelotech.ot/finalizer"
+const DataSyncFinalizer = "pelotech.ot/data-sync-finalizer"
 
-// Resources represent a resource which is used in a workspace that has some data that needs to be synced
-type Resource struct {
+// DataSyncSpec defines the desired state of DataSync.
+type DataSyncSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
+
+	// +kubebuilder:validation:required
+	// +kubebuilder:validation:minlength=1
+	SecretRef string `json:"secretRef"`
 
 	// +kubebuilder:validation:MinLength=1
 	URL string `json:"url"`
@@ -43,30 +48,6 @@ type Resource struct {
 	// DiskSize specifies the size of the disk, e.g., "10Gi", "500Mi".
 	// +kubebuilder:validation:Pattern=`^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$`
 	DiskSize string `json:"diskSize"`
-}
-
-// DataSyncSpec defines the desired state of DataSync.
-type DataSyncSpec struct {
-	// The unique identifier for the workspace to be synced.
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:required
-	WorkspaceID string `json:"workspaceId"`
-
-	// +kubebuilder:validation:required
-	// +kubebuilder:validation:minlength=1
-	Version string `json:"version"`
-
-	// +kubebuilder:validation:required
-	AskForDiskSpace bool `json:"askForDiskSpace"`
-
-	// +kubebuilder:validation:required
-	// +kubebuilder:validation:minlength=1
-	SecretRef string `json:"secretRef"`
-
-	// resources is a list of workspace resources that have data that needs to be synced.
-	// +kubebuilder:validation:required
-	// +kubebuilder:validation:MinItems=0
-	Resources []Resource `json:"resources"`
 
 	// +kubebuilder:validation:Optional
 	StorageClass *string `json:"storageClass,omitempty"`
@@ -96,8 +77,7 @@ type DataSyncStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=datasyncs,scope=Namespaced,shortName=ds,singular=datasync
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="The current phase of the DataSync."
-// +kubebuilder:printcolumn:name="WorkspaceID",type="string",JSONPath=".spec.workspaceId",description="The ID of the workspace being synced."
-// +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="The version of the workspace we are syncing."
+// +kubebuilder:printcolumn:name="Resource Name",type="string",JSONPath=".spec.name",description="The ID of the workspace being synced."
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DataSync is the Schema for the datasyncs API.

@@ -29,23 +29,22 @@ func (dvrm *DataSyncResourceManager) CreateResources(
 	k8sClient client.Client,
 	ds *crdv1.DataSync,
 ) error {
-	for _, resource := range ds.Spec.Resources {
-		vs, dv, err := resourcegen.CreateStorageManifestsForDataSyncResource(resource, ds)
-		if err != nil {
-			return err
-		}
 
-		err = k8sClient.Patch(ctx, dv, client.Apply, client.FieldOwner("data-sync-operator"))
+	vs, dv, err := resourcegen.CreateStorageManifestsForDataSyncResource(ds)
+	if err != nil {
+		return err
+	}
 
-		if err != nil {
-			return err
-		}
+	err = k8sClient.Patch(ctx, dv, client.Apply, client.FieldOwner("data-sync-operator"))
 
-		err = k8sClient.Patch(ctx, vs, client.Apply, client.FieldOwner("data-sync-operator"))
+	if err != nil {
+		return err
+	}
 
-		if err != nil {
-			return err
-		}
+	err = k8sClient.Patch(ctx, vs, client.Apply, client.FieldOwner("data-sync-operator"))
+
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -136,8 +135,6 @@ func (dsrm *DataSyncResourceManager) ResourcesAreReady(
 		}
 	}
 
-
-
 	return dataVolumesReady, nil
 }
 
@@ -193,8 +190,7 @@ func (dsrm *DataSyncResourceManager) ResourcesHaveErrors(
 
 func getLabelsToMatch(ds *crdv1.DataSync) client.MatchingLabels {
 	labelsToMatch := map[string]string{
-		crdv1.DataSyncOwnerLabel:   ds.Name,
-		crdv1.DataSyncVersionLabel: ds.Spec.Version,
+		crdv1.DataSyncOwnerLabel: ds.Name,
 	}
 
 	return client.MatchingLabels(labelsToMatch)
