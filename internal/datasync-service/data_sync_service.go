@@ -164,6 +164,5 @@ func (s *DataSyncService) DeleteResource(ctx context.Context, ds *crdv1.DataSync
 		logger.Error(err, "failed to cleanup child resources of datasync.")
 	}
 
-
 	return ctrl.Result{}, nil
 }

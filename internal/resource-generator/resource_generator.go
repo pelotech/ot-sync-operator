@@ -39,7 +39,6 @@ func createDataVolume(ds *crdv1.DataSync) (*cdiv1beta1.DataVolume, error) {
 		},
 	}
 
-
 	meta := metav1.ObjectMeta{
 		Name:            ds.Spec.Name,
 		Namespace:       ds.Namespace,
@@ -120,7 +119,6 @@ func createVolumeSnapshot(ds *crdv1.DataSync) *snapshotv1.VolumeSnapshot {
 			UID:                ds.UID,
 		},
 	}
-
 
 	meta := metav1.ObjectMeta{
 		Name:            ds.Spec.Name,
