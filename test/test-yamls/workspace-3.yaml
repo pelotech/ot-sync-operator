@@ -1,0 +1,35 @@
+apiVersion: crd.pelotech.ot/v1
+kind: DataSync
+metadata:
+  labels:
+    app.kubernetes.io/name: ot-sync-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: workspace-3-sync
+spec:
+  workspaceId: "lab-033"
+  askForDiskSpace: false
+  secretRef: "lab-vm-images-cache-s3-gov-creds"
+  version: "1.2.0"
+  storageClass: "gp3"
+  snapshotClass: "ebs-snapshot"
+  resources:
+    - name: "analyst01"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-033/1.2.0/analyst01.qcow2"
+      sourceType: "s3"
+      diskSize: "47Gi"
+    - name: "analyst02"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-033/1.2.0/analyst02.qcow2"
+      sourceType: "s3"
+      diskSize: "43Gi"
+    - name: "dc1"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-033/1.2.0/dc1.qcow2"
+      sourceType: "s3"
+      diskSize: "47Gi"
+    - name: "iis"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-033/1.2.0/iis.qcow2"
+      sourceType: "s3"
+      diskSize: "47Gi"
+    - name: "www"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-033/1.2.0/www.qcow2"
+      sourceType: "s3"
+      diskSize: "43Gi"

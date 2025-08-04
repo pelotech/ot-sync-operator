@@ -1,0 +1,19 @@
+apiVersion: crd.pelotech.ot/v1
+kind: DataSync
+metadata:
+  labels:
+    app.kubernetes.io/name: ot-sync-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: workspace-1-sync
+spec:
+  workspaceId: "lab-151"
+  askForDiskSpace: false
+  secretRef: "lab-vm-images-cache-s3-gov-creds"
+  version: "1.0.0"
+  storageClass: "gp3"
+  snapshotClass: "ebs-snapshot"
+  resources:
+    - name: "attacker"
+      url: "https://s3.us-gov-west-1.amazonaws.com/uki-lrn-vm-images/images/lab-151/1.0.0/attacker.qcow2"
+      sourceType: "s3"
+      diskSize: "24Gi"

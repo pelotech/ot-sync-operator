@@ -1,19 +1,3 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package main
 
 import (
@@ -30,12 +14,23 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	crdv1 "pelotech/ot-sync-operator/api/v1"
+	"pelotech/ot-sync-operator/internal/controller"
+	datasyncservice "pelotech/ot-sync-operator/internal/datasync-service"
+	dynamicconfigservice "pelotech/ot-sync-operator/internal/dynamic-config-service"
+	errorservice "pelotech/ot-sync-operator/internal/error-service"
+	resourcemanager "pelotech/ot-sync-operator/internal/resource-manager"
+
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -47,8 +42,44 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(crdv1.AddToScheme(scheme))
+	utilruntime.Must(cdiv1beta1.AddToScheme(scheme))
+	utilruntime.Must(snapshotv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
+
+const (
+	metricsAddrDesc = "The address the metrics endpoint binds to. " +
+		"Use :8443 for HTTPS or :8080 for HTTP," +
+		" or leave as 0 to disable the metrics service."
+
+	enableLEDesc = "Enable leader election for controller manager." +
+		" Enabling this will ensure there is only one active controller manager."
+
+	secureMetricsDesc = "If set, the metrics endpoint is served securely via HTTPS." +
+		" Use --metrics-secure=false to use HTTP instead."
+
+	operatorConfigMapNameDesc = "This configmap contains values used in the controller logic." +
+		" It allows for configuration of behavior"
+
+	probeAddrDesc                = "The address the probe endpoint binds to."
+	webhookCertPathDesc          = "The directory that contains the webhook certificate."
+	webhookCertNameDesc          = "The name of the webhook certificate file."
+	webhookCertKeyDesc           = "The name of the webhook key file."
+	metricsCertPathDesc          = "The directory that contains the metrics server certificate."
+	metricsCertNameDesc          = "The name of the metrics server certificate file."
+	metricsCertKeyDesc           = "The name of the metrics server key file."
+	enableHTTP2Desc              = "If set, HTTP/2 will be enabled for the metrics and webhook servers"
+	runningInClusterDesc         = "Whether or not we running inside the cluster."
+	certConfigMapNameDesc        = "The name of the configmap where we store our Cert info for s3 auth."
+	authSecretNameDesc           = "The name of the secret required for s3 auth."
+	operatorNamespaceDesc        = "The namespace our operator is deployed to."
+	maxSyncRestartCountDesc      = "The maximum number of restarts we allow before we cancel a sync."
+	maxSyncConcurrencyDesc       = "The maximum number of active syncs we allow at once."
+	syncBackoffDurationDesc      = "The amount of time we will wait to backoff if there has been an issue."
+	maxSyncDurationDesc          = "The maximum amount of time we will wait for a sync to complete."
+	runtimeBehaviorConfigMapDesc = "The name of the configmap we will look at for dynamic behavior if present."
+)
 
 // nolint:gocyclo
 func main() {
@@ -60,23 +91,39 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
-	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
-	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
-	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
-		"The directory that contains the metrics server certificate.")
-	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
-	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	var runningInCluster bool
+	var operatorConfigMapName string
+	var certConfigMapName string
+	var authSecretName string
+	var operatorNamespace string
+	var maxSyncRestartCount int
+	var maxSyncConcurrency int
+	var syncBackoffDurationStr string
+	var maxSyncDurationStr string
+	var runtimeConfigMapName string
+
+	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", metricsAddrDesc)
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", probeAddrDesc)
+	flag.BoolVar(&enableLeaderElection, "leader-elect", false, enableLEDesc)
+	flag.BoolVar(&secureMetrics, "metrics-secure", true, secureMetricsDesc)
+	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", webhookCertPathDesc)
+	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", webhookCertNameDesc)
+	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", webhookCertKeyDesc)
+	flag.StringVar(&metricsCertPath, "metrics-cert-path", "", metricsCertPathDesc)
+	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", metricsCertNameDesc)
+	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", metricsCertKeyDesc)
+	flag.BoolVar(&enableHTTP2, "enable-http2", false, enableHTTP2Desc)
+	flag.BoolVar(&runningInCluster, "running-in-cluster", false, runningInClusterDesc)
+	flag.StringVar(&operatorConfigMapName, "operator-configmap", "datasync-operator-config", operatorConfigMapNameDesc)
+	flag.StringVar(&certConfigMapName, "cert-configmap-name", "lab-vm-images-registry-cert", certConfigMapNameDesc)
+	flag.StringVar(&authSecretName, "auth-secret-name", "lab-vm-images-cache-s3-creds", authSecretNameDesc)
+	flag.StringVar(&operatorNamespace, "operator-namespace", "default", operatorNamespaceDesc)
+	flag.IntVar(&maxSyncRestartCount, "max-sync-restart", 2, maxSyncRestartCountDesc)
+	flag.IntVar(&maxSyncConcurrency, "max-sync-concurrency", 2, maxSyncConcurrencyDesc)
+	flag.StringVar(&syncBackoffDurationStr, "error-backoff-duration", "60s", syncBackoffDurationDesc)
+	flag.StringVar(&maxSyncDurationStr, "max-sync-duration", "60m", syncBackoffDurationDesc)
+	flag.StringVar(&runtimeConfigMapName, "runtime-config-name", "datasync-operator-config", runtimeBehaviorConfigMapDesc)
+
 	opts := zap.Options{
 		Development: true,
 	}
@@ -181,6 +228,11 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "1f5c5280.pelotech.ot",
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				operatorNamespace: {},
+			},
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -198,6 +250,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	dsControllerConfig := dynamicconfigservice.GetDSControllerConfig(setupLog)
+
+	rm := &resourcemanager.DataSyncResourceManager{
+		MaxSyncDuration: dsControllerConfig.MaxSyncDuration,
+		RetryLimit:      dsControllerConfig.RetryLimit,
+	}
+
+	recorder := mgr.GetEventRecorderFor("datasync-controller")
+	errorHandler := &errorservice.ErrorHandler{
+		Client:          mgr.GetClient(),
+		Recorder:        recorder,
+		ResourceManager: rm,
+		RetryLimit:      dsControllerConfig.RetryLimit,
+		RetryBackoff:    dsControllerConfig.RetryBackoffDuration,
+	}
+
+	dataSyncService := &datasyncservice.DataSyncService{
+		Client:          mgr.GetClient(),
+		Recorder:        recorder,
+		ResourceManager: rm,
+		ErrorHandler:    errorHandler,
+		SyncLimit:       dsControllerConfig.Concurrency,
+	}
+
+	if err := (&controller.DataSyncReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        recorder,
+		DataSyncService: *dataSyncService,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DataSync")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if metricsCertWatcher != nil {
@@ -220,6 +305,7 @@ func main() {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
+
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
